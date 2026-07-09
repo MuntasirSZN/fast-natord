@@ -2,7 +2,7 @@
 name = "fast-natord"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.89"
 description = "Natural ordering for Rust"
 readme = "README.md"
 homepage = "https://github.com/MuntasirSZN/fast-natord"
