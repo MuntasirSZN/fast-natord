@@ -58,9 +58,13 @@ pub unsafe fn simd_skip_equal(a: &[u8], b: &[u8], i: usize, common_len: usize) -
         while k + 16 <= common_len {
             let va = _mm_loadu_si128(a.as_ptr().add(k) as *const __m128i);
             let vb = _mm_loadu_si128(b.as_ptr().add(k) as *const __m128i);
-            // All 16 bytes equal <=> movemask is all ones.
-            if _mm_movemask_epi8(_mm_cmpeq_epi8(va, vb)) != 0xFFFF {
-                break;
+            let mask = _mm_movemask_epi8(_mm_cmpeq_epi8(va, vb));
+            // mask == 0xFFFF → all 16 bytes equal.
+            // First zero bit = first differing byte.  Use tzcnt to find
+            // its position and advance k past it, skipping the scalar rescan.
+            if mask != 0xFFFF {
+                let diff_bit = (!(mask as u32)).trailing_zeros() as usize;
+                return k + diff_bit;
             }
             k += 16;
         }
