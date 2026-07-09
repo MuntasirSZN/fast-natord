@@ -16,18 +16,8 @@ name = "natord"
 
 [dependencies]
 cpufeatures = "0.3.0"
-icu_collator = {
-  version = "2.2",
-  default-features = false,
-  features = ["compiled_data"],
-  optional = true
-}
-icu_locale = {
-  version = "2.2",
-  default-features = false,
-  features = ["compiled_data"],
-  optional = true
-}
+icu_collator = { version = "2.2", default-features = false, features = ["compiled_data"], optional = true }
+icu_locale = { version = "2.2", default-features = false, features = ["compiled_data"], optional = true }
 sys-locale = { version = "0.3", optional = true }
 thiserror = { version = "2", default-features = false }
 
