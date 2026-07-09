@@ -110,6 +110,10 @@ let result = compare_iter(
 assert_eq!(result, Ordering::Greater);
 ```
 
+## MSRV
+
+Rust 1.89.0 (`gfni` extension stabilized in this version) edition 2024.
+
 ## Origin
 
 Hard-forked from the [`natord`](https://crates.io/crates/natord) crate (MIT License).
