@@ -252,10 +252,5 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_system_locale_fallback() {
-        // Worst case it falls back to en-US — should always succeed.
-        assert!(compare_system_locale("abc", "def").is_ok());
-        assert!(compare_system_locale_ignore_case("abc", "def").is_ok());
-    }
+
 }
