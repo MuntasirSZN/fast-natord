@@ -1,16 +1,37 @@
 [package]
-name = "natord"
-version = "1.0.9"
-authors = ["Kang Seonghoon <public+rust@mearie.org>"]
-
+name = "fast-natord"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
 description = "Natural ordering for Rust"
-homepage = "https://github.com/lifthrasiir/rust-natord"
-documentation = "https://lifthrasiir.github.io/rust-natord/"
-repository = "https://github.com/lifthrasiir/rust-natord"
-keywords = ["sort", "order", "natural"]
 readme = "README.md"
+homepage = "https://github.com/MuntasirSZN/fast-natord"
+repository = "https://github.com/MuntasirSZN/fast-natord"
 license = "MIT"
+keywords = ["natural", "order", "sort"]
 
-[lib]
+[[bench]]
+harness = false
 name = "natord"
-path = "lib.rs"
+
+[dependencies]
+icu_collator = {
+  version = "2.2",
+  default-features = false,
+  features = ["compiled_data"],
+  optional = true
+}
+icu_locale = {
+  version = "2.2",
+  default-features = false,
+  features = ["compiled_data"],
+  optional = true
+}
+sys-locale = { version = "0.3", optional = true }
+thiserror = { version = "2", default-features = false }
+
+[dev-dependencies]
+divan = "0.1.21"
+
+[features]
+locale = ["dep:icu_collator", "dep:icu_locale", "dep:sys-locale"]
