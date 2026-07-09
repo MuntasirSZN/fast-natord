@@ -24,6 +24,10 @@ assert_eq!(files, ["rfc1.txt", "rfc822.txt", "rfc2086.txt"]);
 `fast-natord` is `#![no_std]` by default.  The core API uses
 `core::cmp::Ordering` and `&str` / `&[u8]` arguments.
 
+## SIMD Optimized
+
+Uses cpu specific optimizations via dynamic dispatch, for sse2, sse4.1, sse4.2, avx2 and gfni on x86_64, and neon on arm.
+
 ## Locale support (optional)
 
 Enable the `locale` feature to add locale-aware comparison via ICU4X
