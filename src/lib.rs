@@ -40,7 +40,6 @@ mod byte_utils;
 mod compare;
 mod compare_ignore_case;
 mod compare_iter;
-mod digit;
 mod unicode;
 
 #[cfg(feature = "locale")]

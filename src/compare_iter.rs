@@ -22,25 +22,39 @@ where
     Cmp: FnMut(&T, &T) -> Ordering,
     ToDigit: FnMut(&T) -> Option<isize>,
 {
-    let mut left = left.fuse();
-    let mut right = right.fuse();
+    let mut left = left;
+    let mut right = right;
+    let mut left_done = false;
+    let mut right_done = false;
 
     let mut l;
     let mut r;
-    let mut ll;
-    let mut rr;
 
     macro_rules! read_left {
         () => {{
-            l = left.next();
-            ll = l.as_ref().and_then(|v| to_digit(v));
+            l = if left_done {
+                None
+            } else {
+                let n = left.next();
+                if n.is_none() {
+                    left_done = true;
+                }
+                n
+            };
         }};
     }
 
     macro_rules! read_right {
         () => {{
-            r = right.next();
-            rr = r.as_ref().and_then(|v| to_digit(v));
+            r = if right_done {
+                None
+            } else {
+                let n = right.next();
+                if n.is_none() {
+                    right_done = true;
+                }
+                n
+            };
         }};
     }
 
@@ -64,7 +78,7 @@ where
         }
 
         match (l, r) {
-            (Some(l_), Some(r_)) => match (ll, rr) {
+            (Some(l_), Some(r_)) => match (to_digit(&l_), to_digit(&r_)) {
                 (Some(ll_), Some(rr_)) => {
                     if ll_ == 0 || rr_ == 0 {
                         // left-aligned matching (`015` < `12`)
@@ -72,6 +86,8 @@ where
                         'digits_left: loop {
                             read_left!();
                             read_right!();
+                            let ll = l.as_ref().and_then(&mut to_digit);
+                            let rr = r.as_ref().and_then(&mut to_digit);
                             match (ll, rr) {
                                 (Some(ll_), Some(rr_)) => {
                                     return_unless_equal!(ll_.cmp(&rr_))
@@ -87,6 +103,8 @@ where
                         'digits_right: loop {
                             read_left!();
                             read_right!();
+                            let ll = l.as_ref().and_then(&mut to_digit);
+                            let rr = r.as_ref().and_then(&mut to_digit);
                             match (ll, rr) {
                                 (Some(ll_), Some(rr_)) => {
                                     if lastcmp == Equal {
