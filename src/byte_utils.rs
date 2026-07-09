@@ -18,8 +18,10 @@ pub fn is_ascii_ws(c: u8) -> bool {
     matches!(c, b' ' | b'\t' | b'\n' | b'\x0C' | b'\r')
 }
 
+// ── Scalar tail (shared by all SIMD implementations) ─────────────────
+
 /// Finish the common-prefix skip with scalar 16/8-byte chunks for any tail
-/// that SIMD did not cover (or when no SIMD backend is available).
+/// that SIMD did not cover.
 #[inline(always)]
 unsafe fn finish_scalar(a: &[u8], b: &[u8], mut k: usize, common_len: usize) -> usize {
     unsafe {
@@ -39,32 +41,21 @@ unsafe fn finish_scalar(a: &[u8], b: &[u8], mut k: usize, common_len: usize) -> 
     }
 }
 
-/// Skip equal bytes from `i` up to `common_len` using the widest SIMD path
-/// the target supports, then a scalar tail. Pure byte equality — semantically
-/// identical to a `u128`/`u64` prefix scan, so it is safe for both case-sensitive
-/// and case-insensitive comparison (case folding happens only in the per-byte
-/// tail). Returns the advanced index (equal to `j` in the callers).
-///
-/// Backends (baseline ISA features, called once per comparison):
-/// * `x86_64`: 16-byte SSE2 chunks (always available on x86_64).
-/// * `aarch64`: 16-byte NEON chunks (always available on AArch64).
-/// * any other target: scalar-only tail.
+// ── x86_64 ISA backends ─────────────────────────────────────────────
+
+/// SSE2 baseline — 16-byte chunks, tzcnt on mismatched mask.
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "sse2")]
-pub unsafe fn simd_skip_equal(a: &[u8], b: &[u8], i: usize, common_len: usize) -> usize {
+pub unsafe fn skip_sse2(a: &[u8], b: &[u8], i: usize, common_len: usize) -> usize {
+    use core::arch::x86_64::*;
     unsafe {
-        use core::arch::x86_64::*;
         let mut k = i;
         while k + 16 <= common_len {
             let va = _mm_loadu_si128(a.as_ptr().add(k) as *const __m128i);
             let vb = _mm_loadu_si128(b.as_ptr().add(k) as *const __m128i);
             let mask = _mm_movemask_epi8(_mm_cmpeq_epi8(va, vb));
-            // mask == 0xFFFF → all 16 bytes equal.
-            // First zero bit = first differing byte.  Use tzcnt to find
-            // its position and advance k past it, skipping the scalar rescan.
             if mask != 0xFFFF {
-                let diff_bit = (!(mask as u32)).trailing_zeros() as usize;
-                return k + diff_bit;
+                return k + (!(mask as u32)).trailing_zeros() as usize;
             }
             k += 16;
         }
@@ -72,16 +63,89 @@ pub unsafe fn simd_skip_equal(a: &[u8], b: &[u8], i: usize, common_len: usize) -
     }
 }
 
+/// SSE4.2 — `_mm_cmpistri` returns the first differing byte index directly.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "sse4.2")]
+pub unsafe fn skip_sse42(a: &[u8], b: &[u8], i: usize, common_len: usize) -> usize {
+    use core::arch::x86_64::*;
+    unsafe {
+        let mut k = i;
+        while k + 16 <= common_len {
+            let va = _mm_loadu_si128(a.as_ptr().add(k) as *const __m128i);
+            let vb = _mm_loadu_si128(b.as_ptr().add(k) as *const __m128i);
+            let idx = _mm_cmpistri(va, vb, _SIDD_CMP_EQUAL_EACH | _SIDD_NEGATIVE_POLARITY);
+            if idx != 16 {
+                return k + idx as usize;
+            }
+            k += 16;
+        }
+        finish_scalar(a, b, k, common_len)
+    }
+}
+
+/// AVX2 — 32-byte YMM chunks.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+pub unsafe fn skip_avx2(a: &[u8], b: &[u8], i: usize, common_len: usize) -> usize {
+    use core::arch::x86_64::*;
+    unsafe {
+        let mut k = i;
+        while k + 32 <= common_len {
+            let va = _mm256_loadu_si256(a.as_ptr().add(k) as *const __m256i);
+            let vb = _mm256_loadu_si256(b.as_ptr().add(k) as *const __m256i);
+            let cmp = _mm256_cmpeq_epi8(va, vb);
+            let mask = _mm256_movemask_epi8(cmp) as u32;
+            if mask != 0xFFFF_FFFF {
+                return k + (!mask).trailing_zeros() as usize;
+            }
+            k += 32;
+        }
+        // SSE2 fallback for tail
+        while k + 16 <= common_len {
+            let va = _mm_loadu_si128(a.as_ptr().add(k) as *const __m128i);
+            let vb = _mm_loadu_si128(b.as_ptr().add(k) as *const __m128i);
+            let mask = _mm_movemask_epi8(_mm_cmpeq_epi8(va, vb));
+            if mask != 0xFFFF {
+                return k + (!(mask as u32)).trailing_zeros() as usize;
+            }
+            k += 16;
+        }
+        finish_scalar(a, b, k, common_len)
+    }
+}
+
+// ── Runtime dispatch (x86_64) ────────────────────────────────────────
+
+cpufeatures::new!(cpuid_avx2, "avx2");
+cpufeatures::new!(cpuid_sse42, "sse4.2");
+
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+pub unsafe fn simd_skip_equal(a: &[u8], b: &[u8], i: usize, common_len: usize) -> usize {
+    // cpufeatures caches after first call — subsequent checks are a single
+    // `test byte,[addr]; jne`.  Priority: AVX2 > SSE4.2 > SSE2.
+    unsafe {
+        if cpuid_avx2::get() {
+            skip_avx2(a, b, i, common_len)
+        } else if cpuid_sse42::get() {
+            skip_sse42(a, b, i, common_len)
+        } else {
+            skip_sse2(a, b, i, common_len)
+        }
+    }
+}
+
+// ── AArch64 ──────────────────────────────────────────────────────────
+
 #[cfg(target_arch = "aarch64")]
 #[target_feature(enable = "neon")]
 pub unsafe fn simd_skip_equal(a: &[u8], b: &[u8], i: usize, common_len: usize) -> usize {
+    use core::arch::aarch64::*;
     unsafe {
-        use core::arch::aarch64::*;
         let mut k = i;
         while k + 16 <= common_len {
             let va = vld1q_u8(a.as_ptr().add(k));
             let vb = vld1q_u8(b.as_ptr().add(k));
-            // All 16 bytes equal <=> min over the equality mask is 0xFF.
             if vminvq_u8(vceqq_u8(va, vb)) != 0xFF {
                 break;
             }
@@ -90,6 +154,8 @@ pub unsafe fn simd_skip_equal(a: &[u8], b: &[u8], i: usize, common_len: usize) -
         finish_scalar(a, b, k, common_len)
     }
 }
+
+// ── Other architectures (scalar only) ───────────────────────────────
 
 #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
 pub unsafe fn simd_skip_equal(a: &[u8], b: &[u8], i: usize, common_len: usize) -> usize {
