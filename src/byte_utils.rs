@@ -199,9 +199,14 @@ pub unsafe fn skip_gfni_avx2(a: &[u8], b: &[u8], i: usize, common_len: usize) ->
 // VAES/VPCLMULQDQ don't provide byte-equality primitives.
 
 // Priority: GFNI+AVX2 > AVX2 > SSE4.2 > SSE4.1 > SSE2.
+// Only expand on x86_64 — cpufeatures rejects these feature strings on aarch64.
+#[cfg(target_arch = "x86_64")]
 cpufeatures::new!(cpuid_avx2_gfni, "avx2", "gfni");
+#[cfg(target_arch = "x86_64")]
 cpufeatures::new!(cpuid_avx2, "avx2");
+#[cfg(target_arch = "x86_64")]
 cpufeatures::new!(cpuid_sse42, "sse4.2");
+#[cfg(target_arch = "x86_64")]
 cpufeatures::new!(cpuid_sse41, "sse4.1");
 
 #[cfg(target_arch = "x86_64")]
