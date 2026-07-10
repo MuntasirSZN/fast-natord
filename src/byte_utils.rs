@@ -79,12 +79,6 @@ pub unsafe fn skip_sse41(a: &[u8], b: &[u8], i: usize, common_len: usize) -> usi
             let va = _mm_loadu_si128(a.as_ptr().add(k) as *const __m128i);
             let vb = _mm_loadu_si128(b.as_ptr().add(k) as *const __m128i);
             let neq = _mm_xor_si128(va, vb);
-            // PTEST sets ZF=1 iff (not neq) & neq == 0 (always false here).
-            // CF=1 iff (neq) & neq == 0 → all zero → equal.
-            // _mm_testz_si128(neq, neq): returns 1 when ZF=1 (always 0), so
-            // use !_mm_testc_si128(neq, neq) → returns 1 when CF=0 (unequal)
-            // Actually: testc → 1 when CF=1 → equal.  testz → 1 when ZF=1 (never).
-            // Use: _mm_test_all_zeros → 1 when (val & mask) == 0 → all zero.
             if _mm_test_all_zeros(neq, neq) == 0 {
                 // Not all equal — find first differing byte via PMOVMSKB.
                 let mask = _mm_movemask_epi8(_mm_cmpeq_epi8(va, vb));
@@ -161,11 +155,6 @@ pub unsafe fn skip_gfni_avx2(a: &[u8], b: &[u8], i: usize, common_len: usize) ->
     use core::arch::x86_64::*;
     unsafe {
         let mut k = i;
-        // Identity affine matrix: byte = 1*byte + 0 (no change).
-        // GF2P8AFFINE with identity matrix transforms each byte to itself.
-        // XOR then AFFINE: non-zero input produces non-zero output iff
-        // at least one bit differs.  PMOVMSKB extracts a mask.
-        // Actually simpler: VPXOR + VPTEST (AVX2 has _mm256_testz_si256).
         while k + 32 <= common_len {
             let va = _mm256_loadu_si256(a.as_ptr().add(k) as *const __m256i);
             let vb = _mm256_loadu_si256(b.as_ptr().add(k) as *const __m256i);
@@ -199,7 +188,6 @@ pub unsafe fn skip_gfni_avx2(a: &[u8], b: &[u8], i: usize, common_len: usize) ->
 // VAES/VPCLMULQDQ don't provide byte-equality primitives.
 
 // Priority: GFNI+AVX2 > AVX2 > SSE4.2 > SSE4.1 > SSE2.
-// Only expand on x86_64 — cpufeatures rejects these feature strings on aarch64.
 #[cfg(target_arch = "x86_64")]
 cpufeatures::new!(cpuid_avx2_gfni, "avx2", "gfni");
 #[cfg(target_arch = "x86_64")]

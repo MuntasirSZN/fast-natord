@@ -12,23 +12,11 @@
 //! # Panic-free
 //!
 //! All public functions are guaranteed not to panic for any input.
-//! Fallible operations return `Result`.
 //!
 //! # `no_std`
 //!
 //! This crate is `#![no_std]` by default.  The core API uses
 //! `core::cmp::Ordering` and `&str` / `&[u8]` arguments.
-//!
-//! # Locale support (optional)
-//!
-//! Enable the `locale` feature to add locale-aware comparison using
-//! ICU4X collation:
-//!
-//! ```toml
-//! fast-natord = { version = "0.1", features = ["locale"] }
-//! ```
-//!
-//! See the [`collator`] module for details.
 
 #![no_std]
 #![warn(missing_docs)]
@@ -41,12 +29,6 @@ mod compare;
 mod compare_ignore_case;
 mod compare_iter;
 mod unicode;
-
-#[cfg(feature = "locale")]
-pub mod collator;
-
-#[cfg(feature = "locale")]
-pub use collator::{Collator, CollatorError};
 
 /// Compare two strings case-sensitively using natural ordering.
 ///

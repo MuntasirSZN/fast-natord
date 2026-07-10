@@ -127,7 +127,7 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
             let mut pb_eq = pb;
 
             unsafe {
-                while pa_eq.add(8) <= end_run {
+                while (pa_eq as usize) + 8 <= (end_run as usize) {
                     let wa = (pa_eq as *const u64).read_unaligned();
                     let wb = (pb_eq as *const u64).read_unaligned();
                     let diff = wa ^ wb;

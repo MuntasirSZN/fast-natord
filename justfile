@@ -14,6 +14,11 @@ nextest := "cargo hack nextest run --locked --optional-deps --each-feature"
 _default:
     @just --list
 
+# Run miri
+miri:
+    rustup component add --toolchain=nightly miri
+    rustup run nightly -- cargo miri nextest run
+
 # Format code with rustfmt
 fmt:
     {{ format }}
