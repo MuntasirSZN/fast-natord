@@ -17,7 +17,7 @@ _default:
 # Run miri
 miri:
     rustup component add --toolchain=nightly miri
-    rustup run nightly -- cargo miri nextest run
+    rustup run nightly -- cargo miri nextest run --all-features
 
 # Format code with rustfmt
 fmt:

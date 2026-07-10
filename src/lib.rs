@@ -1,6 +1,6 @@
 //! # `fast-natord`
 //!
-//! Natural ordering for Rust.  Compares strings with awareness of numeric
+//! Natural ordering for Rust — compares strings with awareness of numeric
 //! subsequences so that `"rfc2"` precedes `"rfc10"`.
 //!
 //! ```rust
@@ -9,14 +9,74 @@
 //! assert_eq!(files, ["rfc1.txt", "rfc822.txt", "rfc2086.txt"]);
 //! ```
 //!
-//! # Panic-free
+//! # Quick start
 //!
-//! All public functions are guaranteed not to panic for any input.
+//! | Use case | Function / type | Feature needed |
+//! |---|---|---|
+//! | Case-sensitive natural sort | [`compare`] | — |
+//! | Case-insensitive natural sort | [`compare_ignore_case`] | — |
+//! | Custom char-by-char comparison | [`compare_iter`] | — |
+//! | NFC + case-insensitive sort | [`compare_normalized`] | `normalize` |
+//! | Configurable normalizer | [`Normalizer`] | `normalize` for NFC/NFD/NFKC/NFKD |
+//!
+//! # Configurable normalisation
+//!
+//! The [`Normalizer`] type pre-processes strings before comparison in a
+//! separate step, keeping the hot comparison loop free of per-character
+//! normalisation overhead.
+//!
+//! ```rust
+//! use fast_natord::{Normalizer, Normalization, CaseMode};
+//!
+//! // NFC normalisation + case folding — canonically equivalent strings
+//! // compare as equal regardless of composition or casing.
+//! let norm = Normalizer::new()
+//!     .normalization(Normalization::Nfc)
+//!     .case(CaseMode::Fold);
+//!
+//! assert_eq!(norm.compare("\u{00E9}", "e\u{0301}"), core::cmp::Ordering::Equal);
+//! assert_eq!(norm.compare("ABC", "abc"), core::cmp::Ordering::Equal);
+//! assert_eq!(norm.compare("pic10", "pic2"), core::cmp::Ordering::Greater);
+//! ```
+//!
+//! ## How it works
+//!
+//! Normalisation happens **once per string**, not once per character
+//! inside the comparison loop:
+//!
+//! 1. [`Normalizer::normalize`] applies the configured Unicode
+//!    normalisation and/or case folding, returning a `Cow<str>`
+//!    (borrowed when no transformation is needed).
+//! 2. [`Normalizer::compare`] normalises both inputs, then delegates
+//!    to the same SIMD-accelerated case-sensitive comparator used by
+//!    [`compare`].
+//!
+//! On all-ASCII inputs the normalizer short-circuits via SIMD and
+//! produces zero allocations regardless of the configured normalisation
+//! form.
+//!
+//! # Feature flags
+//!
+//! | Feature | Default | Description |
+//! |---|---|---|
+//! | `normalize` | off | Enables NFC, NFD, NFKC, NFKD normalisation and SIMD-accelerated case folding via the [simd-normalizer](https://crates.io/crates/simd-normalizer) crate (supports Unicode 17). |
+//!
+//! Without `normalize`:
+//! * `Normalization::Nfc` / `Nfd` / `Nfkc` / `Nfkd` silently behave as `None`.
+//! * `CaseMode::Fold` falls back to [`char::to_lowercase()`] (no SIMD).
+//! * `CaseMode::AsciiOnly` and `CaseMode::Sensitive` are unaffected.
 //!
 //! # `no_std`
 //!
 //! This crate is `#![no_std]` by default.  The core API uses
-//! `core::cmp::Ordering` and `&str` / `&[u8]` arguments.
+//! [`core::cmp::Ordering`] and `&str` / `&[u8]` arguments.
+//! The `normalize` feature additionally requires `alloc`.
+//!
+//! # Panic-free
+//!
+//! All public functions are guaranteed not to panic for any input.
+//! The normaliser returns `Cow::Owned` only when a transformation is
+//! actually applied; it never panics on allocation failure.
 
 #![no_std]
 #![warn(missing_docs)]
@@ -28,6 +88,7 @@ mod byte_utils;
 mod compare;
 mod compare_ignore_case;
 mod compare_iter;
+mod normalizer;
 mod unicode;
 
 /// Compare two strings case-sensitively using natural ordering.
@@ -43,6 +104,11 @@ pub fn compare(left: &str, right: &str) -> core::cmp::Ordering {
 ///
 /// ASCII case folding via `to_ascii_lowercase`; non-ASCII chars are
 /// decoded and lowercased via [`char::to_lowercase`].
+///
+/// For better performance on non-ASCII data (especially repeated
+/// comparisons of the same strings), consider [`Normalizer`] with
+/// [`CaseMode::Fold`] instead — it pre-processes case folding once
+/// and avoids per-character decoding in the hot loop.
 #[inline(always)]
 pub fn compare_ignore_case(left: &str, right: &str) -> core::cmp::Ordering {
     compare_ignore_case::compare_ignore_case_impl(left.as_bytes(), right.as_bytes())
@@ -67,6 +133,10 @@ pub fn compare_ignore_case(left: &str, right: &str) -> core::cmp::Ordering {
 /// assert_eq!(result, Ordering::Greater);
 /// ```
 pub use compare_iter::compare_iter;
+
+// ── Configurable normalizer ───────────────────────────────────────────
+
+pub use normalizer::{CaseMode, Normalization, Normalizer, compare_normalized};
 
 #[cfg(test)]
 mod tests {

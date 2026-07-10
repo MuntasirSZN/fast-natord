@@ -2,7 +2,7 @@
 name = "fast-natord"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.89"
+rust-version = "1.91"
 description = "Natural ordering for Rust"
 readme = "README.md"
 homepage = "https://github.com/MuntasirSZN/fast-natord"
@@ -14,8 +14,13 @@ keywords = ["natural", "order", "sort"]
 harness = false
 name = "natord"
 
+[features]
+default = []
+normalize = ["dep:simd-normalizer"]
+
 [dependencies]
 cpufeatures = "0.3.0"
+simd-normalizer = { version = "0.1", optional = true, default-features = false, features = ["alloc"] }
 
 [dev-dependencies]
 divan = "0.1.21"

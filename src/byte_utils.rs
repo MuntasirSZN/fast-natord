@@ -18,6 +18,167 @@ pub fn is_ascii_ws(c: u8) -> bool {
     matches!(c, b' ' | b'\t' | b'\n' | b'\x0C' | b'\r')
 }
 
+// ── SIMD ASCII detection ────────────────────────────────────────────
+//
+// Used by the normalizer to short-circuit normalization for all-ASCII
+// strings (which are already in every normal form).
+
+/// Returns `true` if every byte in `s` has bit 7 clear.
+///
+/// Uses SIMD on x86_64 (SSE2+) and AArch64 (NEON).  Falls back to scalar
+/// on other architectures.
+///
+/// This is the fast path used by the [`Normalizer`](crate::Normalizer) to
+/// short-circuit normalisation for all-ASCII strings.
+#[inline]
+pub fn simd_is_ascii(s: &[u8]) -> bool {
+    if s.len() < 16 {
+        return !s.iter().any(|&b| b >= 128);
+    }
+    unsafe { simd_is_ascii_impl(s) }
+}
+
+/// SSE2 implementation of [`simd_is_ascii`].
+///
+/// # Safety
+///
+/// The caller must ensure the CPU supports SSE2 (implied by the x86_64
+/// target, but must be verified via `is_x86_feature_detected!` when this
+/// function is called from a dynamic-dispatched context).
+/// `s` must be valid for reads up to `s.len()`.  Prefer calling the safe
+/// [`simd_is_ascii`] wrapper which handles dispatch and inputs ≤16 bytes.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "sse2")]
+pub unsafe fn simd_is_ascii_sse2(s: &[u8]) -> bool {
+    use core::arch::x86_64::*;
+    unsafe {
+        let mut i = 0;
+        while i + 16 <= s.len() {
+            let chunk = _mm_loadu_si128(s.as_ptr().add(i) as *const __m128i);
+            // PMOVMSKB extracts the sign bit (MSB) of each byte.
+            // Bits 0-15 correspond to bytes 0-15; any set bit → non-ASCII.
+            if _mm_movemask_epi8(chunk) != 0 {
+                return false;
+            }
+            i += 16;
+        }
+        while i < s.len() {
+            if s[i] >= 128 {
+                return false;
+            }
+            i += 1;
+        }
+        true
+    }
+}
+
+/// AVX2 implementation of [`simd_is_ascii`].
+///
+/// Processes 32 bytes per iteration.  Falls back to SSE2 for the tail.
+///
+/// # Safety
+///
+/// The caller must ensure the CPU supports AVX2 (check via
+/// `is_x86_feature_detected!` or [`cpuid_ascii_avx2::get`]).
+/// `s` must be valid for reads up to `s.len()`.  Prefer calling the safe
+/// [`simd_is_ascii`] wrapper.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+pub unsafe fn simd_is_ascii_avx2(s: &[u8]) -> bool {
+    use core::arch::x86_64::*;
+    unsafe {
+        let mut i = 0;
+        while i + 32 <= s.len() {
+            let chunk = _mm256_loadu_si256(s.as_ptr().add(i) as *const __m256i);
+            if _mm256_movemask_epi8(chunk) as u32 != 0 {
+                return false;
+            }
+            i += 32;
+        }
+        // SSE2 fallback for ≤32 bytes tail.
+        while i + 16 <= s.len() {
+            let chunk = _mm_loadu_si128(s.as_ptr().add(i) as *const __m128i);
+            if _mm_movemask_epi8(chunk) != 0 {
+                return false;
+            }
+            i += 16;
+        }
+        while i < s.len() {
+            if s[i] >= 128 {
+                return false;
+            }
+            i += 1;
+        }
+        true
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+cpufeatures::new!(cpuid_ascii_avx2, "avx2");
+
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+unsafe fn simd_is_ascii_impl(s: &[u8]) -> bool {
+    unsafe {
+        if cpuid_ascii_avx2::get() {
+            simd_is_ascii_avx2(s)
+        } else {
+            // SSE2 is baseline for x86_64 (implied by the target arch).
+            simd_is_ascii_sse2(s)
+        }
+    }
+}
+
+// ── AArch64 NEON ASCII helpers ───────────────────────────────────────
+
+/// NEON (AArch64) implementation of [`simd_is_ascii`].
+///
+/// Uses `VMAXV` to compute the vector-wide maximum byte value in a single
+/// instruction, then checks whether it is ≥ 128.
+///
+/// # Safety
+///
+/// The caller must ensure the CPU supports NEON (implied by the AArch64
+/// target).  `s` must be valid for reads up to `s.len()`.  Prefer calling
+/// the safe [`simd_is_ascii`] wrapper.
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "neon")]
+pub unsafe fn simd_is_ascii_neon(s: &[u8]) -> bool {
+    use core::arch::aarch64::*;
+    unsafe {
+        let mut i = 0;
+        while i + 16 <= s.len() {
+            let chunk = vld1q_u8(s.as_ptr().add(i));
+            // VMOV is vector-wide max; VMAXV gives the max byte value.
+            if vmaxvq_u8(chunk) >= 128 {
+                return false;
+            }
+            i += 16;
+        }
+        while i < s.len() {
+            if s[i] >= 128 {
+                return false;
+            }
+            i += 1;
+        }
+        true
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+#[inline(always)]
+unsafe fn simd_is_ascii_impl(s: &[u8]) -> bool {
+    unsafe { simd_is_ascii_neon(s) }
+}
+
+// ── Non-SIMD fallback ──────────────────────────────────────────────
+
+#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+#[inline(always)]
+unsafe fn simd_is_ascii_impl(s: &[u8]) -> bool {
+    !s.iter().any(|&b| b >= 128)
+}
+
 // ── Scalar tail (shared by all SIMD implementations) ─────────────────
 
 #[inline(always)]
