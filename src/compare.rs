@@ -18,6 +18,13 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
     let common_len = len_a.min(len_b);
     let adv = unsafe { byte_utils::simd_skip_equal(a, b, 0, common_len) };
 
+    // Tracks whether the last consumed aligned-and-equal byte was a digit.
+    // When the first differing bytes have mixed digit/non-digit types this
+    // tells us the digit run continues on one side but ended on the other.
+    // Initialised from the SIMD-skipped prefix and updated as the loop
+    // processes matching bytes.
+    let mut last_eq_digit = adv > 0 && byte_utils::is_digit(a[adv - 1]);
+
     // SAFETY: adv ≤ common_len ≤ both lengths.
     let mut pa = unsafe { a.as_ptr().add(adv) };
     let mut pb = unsafe { b.as_ptr().add(adv) };
@@ -93,7 +100,15 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
                 }
                 let ka = pa_run as usize - pa as usize;
                 let kb = pb_run as usize - pb as usize;
-                return ka.cmp(&kb);
+                if ka != kb {
+                    return ka.cmp(&kb);
+                }
+                // Equal-length left-aligned runs that matched: continue
+                // the main loop to compare post-run characters.
+                pa = pa_run;
+                pb = pb_run;
+                last_eq_digit = true;
+                continue;
             }
 
             // Right-aligned: longer significant run wins; equal length →
@@ -154,16 +169,35 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
 
             pa = pa_run;
             pb = pb_run;
+            // The equal-length digit runs were digits — remember for later
+            // mixed-type checks.
+            last_eq_digit = true;
             continue;
         }
 
         // At most one side is a digit (or neither).  Digit bytes are always
         // below non-digit/non-ws bytes, so a plain byte compare preserves
-        // natural order (numbers before text).
+        // natural order (numbers before text) — except when the last
+        // aligned matching byte was a digit: the digit run may continue on
+        // one side but not the other, so the longer run wins.
         if ca != cb {
+            if last_eq_digit
+                && byte_utils::is_digit(ca) != byte_utils::is_digit(cb)
+            {
+                // Last aligned bytes were a matching digit run; one side's
+                // digit run continues while the other's has ended → longer
+                // run wins.
+                return if byte_utils::is_digit(ca) {
+                    Greater
+                } else {
+                    Less
+                };
+            }
             return if ca < cb { Less } else { Greater };
         }
         unsafe {
+            // Matching non-digit bytes: clear the digit-run flag.
+            last_eq_digit = false;
             pa = pa.add(1);
             pb = pb.add(1);
         }
