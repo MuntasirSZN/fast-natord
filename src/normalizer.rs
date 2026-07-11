@@ -312,22 +312,20 @@ impl Normalizer {
     /// Used when the `normalize` feature is not enabled.
     #[cfg(not(feature = "normalize"))]
     fn fold_unicode_fallback<'a>(&self, s: Cow<'a, str>) -> Cow<'a, str> {
-        // Scan for first uppercase char to decide if allocation is needed.
-        // (This avoids allocating when no folding is necessary.)
-        let first_change = match s.chars().position(|c| {
-            let lc: char = c.to_lowercase().next().unwrap_or(c);
-            lc != c
-        }) {
-            Some(idx) => idx,
-            None => return s,
-        };
-
+        // Single pass: fold every char, track whether anything changed.
+        // A two-pass approach with `str::chars().position()` + slice
+        // would confuse char indices with byte indices on multi-byte
+        // strings and panic.
         let mut result = String::with_capacity(s.len());
-        result.push_str(&s[..first_change]);
-        for c in s[first_change..].chars() {
-            result.extend(c.to_lowercase());
+        let mut changed = false;
+        for c in s.chars() {
+            let lc: char = c.to_lowercase().next().unwrap_or(c);
+            if lc != c {
+                changed = true;
+            }
+            result.push(lc);
         }
-        Cow::Owned(result)
+        if changed { Cow::Owned(result) } else { s }
     }
 }
 
@@ -379,6 +377,18 @@ mod tests {
         // All-ASCII → NFC is a no-op → borrowed.
         let n = Normalizer::new().nfc();
         assert_eq!(n.normalize("hello world"), Cow::Borrowed("hello world"));
+    }
+
+    #[test]
+    fn test_ascii_only_borrowed_when_no_fold_needed() {
+        // Mixed ASCII/non-ASCII where all ASCII is already lowercase:
+        // fold_ascii should return Borrowed (no allocation).
+        let n = Normalizer::new().case_ascii_only();
+        let result = n.normalize("hello\u{00E9}");
+        match result {
+            Cow::Borrowed(s) => assert_eq!(s, "hello\u{00E9}"),
+            _ => panic!("expected Borrowed but got Owned"),
+        }
     }
 
     #[test]

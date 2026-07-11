@@ -1,0 +1,4 @@
+#:schema https://www.schemastore.org/cargo-mutants-config.json
+
+test_tool = "nextest"
+minimum_test_timeout = 60

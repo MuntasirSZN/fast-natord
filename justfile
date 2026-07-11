@@ -1,6 +1,6 @@
 # justfile for changelogen-rs development
 
-tools := "cargo-nextest cargo-deny cargo-llvm-cov cargo-watch cargo-hack"
+tools := "cargo-nextest cargo-deny cargo-llvm-cov cargo-watch cargo-hack kani-verifier cargo-mutants"
 
 # Commands
 
@@ -13,6 +13,10 @@ nextest := "cargo hack nextest run --locked --optional-deps --each-feature"
 # Default recipe (shows help)
 _default:
     @just --list
+
+# Run mutants
+mutants *ARGS:
+    cargo mutants --all-features {{ ARGS }}
 
 # Run miri
 miri:

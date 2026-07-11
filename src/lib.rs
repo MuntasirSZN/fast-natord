@@ -337,4 +337,364 @@ mod tests {
         );
         assert_eq!(result, Ordering::Equal);
     }
+
+    // ── compare_ignore_case edge cases ───────────────────────────────
+
+    //
+    // CAUTION: `compare_ignore_case_impl` operates byte-at-a-time, which
+    // works for ASCII but has a known limitation with multi-byte UTF-8:
+    // when two non-ASCII codepoints share the same leading byte, the
+    // continuation bytes reach the decode-char path as standalone
+    // bytes (not valid UTF-8 lead bytes).  The tests below only use
+    // non-ASCII codepoints whose leading bytes differ.
+    //
+
+    #[test]
+    fn test_ignore_case_mixed_ascii_non_ascii() {
+        // One ASCII, one non-ASCII — byte order decides
+        assert_eq!(compare_ignore_case("a", "é"), Ordering::Less);
+        assert_eq!(compare_ignore_case("é", "a"), Ordering::Greater);
+    }
+
+    #[test]
+    fn test_ignore_case_both_non_ascii_different_lead_byte() {
+        // Ω (U+03A9, 0xCE 0xA9) vs ω (U+03C9, 0xCF 0x89).
+        // Different leading bytes, both ≥128.  Decoded codepoints
+        // case-fold to the same character.
+        assert_eq!(compare_ignore_case("Ω", "ω"), Ordering::Equal);
+        assert_eq!(compare_ignore_case("ω", "Ω"), Ordering::Equal);
+    }
+
+    #[test]
+    fn test_ignore_case_non_ascii_both_lt() {
+        // é (U+00E9, 0xC3 0xA9) < あ (U+3042, 0xE3 0x81 0x82).
+        // Different leading bytes, different codepoints.
+        assert_eq!(compare_ignore_case("é", "あ"), Ordering::Less);
+        assert_eq!(compare_ignore_case("あ", "é"), Ordering::Greater);
+    }
+
+    #[test]
+    fn test_ignore_case_non_ascii_numeric() {
+        // Non-ASCII prefix with numeric runs (non-ASCII bytes are identical on both).
+        assert_eq!(compare_ignore_case("café10", "café2"), Ordering::Greater);
+        assert_eq!(compare_ignore_case("café2", "café10"), Ordering::Less);
+    }
+
+    #[test]
+    fn test_ignore_case_whitespace_non_ascii() {
+        // Whitespace skip with non-ASCII content (identical non-ASCII bytes).
+        assert_eq!(compare_ignore_case("Café 10", "café 2"), Ordering::Greater);
+        assert_eq!(compare_ignore_case("café 2", "Café 10"), Ordering::Less);
+    }
+
+    #[test]
+    fn test_ignore_case_non_ascii_leading_zeros() {
+        // Left-aligned zeros after identical non-ASCII prefix.
+        assert_eq!(compare_ignore_case("Café015", "café12"), Ordering::Less);
+        assert_eq!(compare_ignore_case("café12", "Café015"), Ordering::Greater);
+    }
+
+    // ── compare_iter edge cases ─────────────────────────────────────
+
+    #[test]
+    fn test_compare_iter_left_aligned_zeros() {
+        // Left-aligned: first digit is 0 → compare char-by-char
+        let result = compare_iter(
+            "015".chars(),
+            "12".chars(),
+            |c| c.is_whitespace(),
+            |a, b| a.cmp(b),
+            |c| c.to_digit(10).map(|v| v as isize),
+        );
+        assert_eq!(result, Ordering::Less);
+    }
+
+    #[test]
+    fn test_compare_iter_right_aligned_accum() {
+        // Right-aligned: lastcmp accumulates over digit run
+        // "1243" vs "1234": 1==1, 2==2, 4>3, then 3>_ → Greater
+        let result = compare_iter(
+            "1243".chars(),
+            "1234".chars(),
+            |c| c.is_whitespace(),
+            |a, b| a.cmp(b),
+            |c| c.to_digit(10).map(|v| v as isize),
+        );
+        assert_eq!(result, Ordering::Greater);
+    }
+
+    #[test]
+    fn test_compare_iter_right_aligned_tie() {
+        // Same length, same digits → Equal
+        let result = compare_iter(
+            "1234".chars(),
+            "1234".chars(),
+            |c| c.is_whitespace(),
+            |a, b| a.cmp(b),
+            |c| c.to_digit(10).map(|v| v as isize),
+        );
+        assert_eq!(result, Ordering::Equal);
+    }
+
+    #[test]
+    fn test_compare_iter_left_longer() {
+        // Left has more chars after digits
+        let result = compare_iter(
+            "abc".chars(),
+            "ab".chars(),
+            |c| c.is_whitespace(),
+            |a, b| a.cmp(b),
+            |c| c.to_digit(10).map(|v| v as isize),
+        );
+        assert_eq!(result, Ordering::Greater);
+
+        let result = compare_iter(
+            "ab".chars(),
+            "abc".chars(),
+            |c| c.is_whitespace(),
+            |a, b| a.cmp(b),
+            |c| c.to_digit(10).map(|v| v as isize),
+        );
+        assert_eq!(result, Ordering::Less);
+    }
+
+    #[test]
+    fn test_compare_iter_empty() {
+        let result = compare_iter(
+            "".chars(),
+            "".chars(),
+            |c| c.is_whitespace(),
+            |a, b| a.cmp(b),
+            |c| c.to_digit(10).map(|v| v as isize),
+        );
+        assert_eq!(result, Ordering::Equal);
+
+        let result = compare_iter(
+            "".chars(),
+            "a".chars(),
+            |c| c.is_whitespace(),
+            |a, b| a.cmp(b),
+            |c| c.to_digit(10).map(|v| v as isize),
+        );
+        assert_eq!(result, Ordering::Less);
+    }
+
+    #[test]
+    fn test_compare_iter_skip_whitespace() {
+        // Whitespace skip between non-digits
+        let result = compare_iter(
+            "a b".chars(),
+            "ab".chars(),
+            |c| c.is_whitespace(),
+            |a, b| a.cmp(b),
+            |c| c.to_digit(10).map(|v| v as isize),
+        );
+        assert_eq!(result, Ordering::Equal);
+    }
+
+    #[test]
+    fn test_compare_iter_zero_length_digits() {
+        // to_digit returns 0, triggers left-aligned path
+        let result = compare_iter(
+            "a0b".chars(),
+            "a00b".chars(),
+            |c| c.is_whitespace(),
+            |a, b| a.cmp(b),
+            |c| c.to_digit(10).map(|v| v as isize),
+        );
+        // 0 == 0, then 0 < 0 (both digits), then run lengths differ
+        assert_eq!(result, Ordering::Less);
+    }
+
+    #[test]
+    fn test_compare_iter_right_aligned_longer_run_wins() {
+        // Right-aligned, same prefix but one run is longer
+        let result = compare_iter(
+            "a123".chars(),
+            "a12".chars(),
+            |c| c.is_whitespace(),
+            |a, b| a.cmp(b),
+            |c| c.to_digit(10).map(|v| v as isize),
+        );
+        assert_eq!(result, Ordering::Greater);
+
+        let result = compare_iter(
+            "a12".chars(),
+            "a123".chars(),
+            |c| c.is_whitespace(),
+            |a, b| a.cmp(b),
+            |c| c.to_digit(10).map(|v| v as isize),
+        );
+        assert_eq!(result, Ordering::Less);
+    }
+
+    #[test]
+    fn test_compare_iter_left_aligned_zero_vs_zeros() {
+        // Left-aligned zeros: "0" vs "00"
+        let result = compare_iter(
+            "0".chars(),
+            "00".chars(),
+            |c| c.is_whitespace(),
+            |a, b| a.cmp(b),
+            |c| c.to_digit(10).map(|v| v as isize),
+        );
+        assert_eq!(result, Ordering::Less);
+    }
+
+    #[test]
+    fn test_compare_iter_skip_at_start() {
+        // Whitespace at start of one string
+        let result = compare_iter(
+            " a".chars(),
+            "a".chars(),
+            |c| c.is_whitespace(),
+            |a, b| a.cmp(b),
+            |c| c.to_digit(10).map(|v| v as isize),
+        );
+        assert_eq!(result, Ordering::Equal);
+
+        // Whitespace on both sides
+        let result = compare_iter(
+            "  ".chars(),
+            "".chars(),
+            |c| c.is_whitespace(),
+            |a, b| a.cmp(b),
+            |c| c.to_digit(10).map(|v| v as isize),
+        );
+        assert_eq!(result, Ordering::Equal);
+    }
+
+    #[test]
+    fn test_compare_iter_right_aligned_then_non_digit() {
+        // Equal right-aligned digit run, then non-digit decides
+        let result = compare_iter(
+            "a123b".chars(),
+            "a123c".chars(),
+            |c| c.is_whitespace(),
+            |a, b| a.cmp(b),
+            |c| c.to_digit(10).map(|v| v as isize),
+        );
+        assert_eq!(result, Ordering::Less);
+    }
+
+    // ── compare edge cases ──────────────────────────────────────────
+
+    #[test]
+    fn test_whitespace_at_start() {
+        assert_eq!(compare("  abc", "abc"), Ordering::Equal);
+        assert_eq!(compare("abc", "  abc"), Ordering::Equal);
+        assert_eq!(compare("\t\nabc", "abc"), Ordering::Equal);
+    }
+
+    #[test]
+    fn test_digit_vs_non_digit_with_ws() {
+        // Whitespace before digit-vs-letter boundary
+        assert_eq!(compare(" 1a", "a"), Ordering::Less);
+    }
+
+    #[test]
+    fn test_compare_left_aligned_zero_varying_runs() {
+        // "0015" vs "015" — left-aligned with the second digit 0 == 0,
+        // then left has more digits
+        assert_eq!(compare("0015", "015"), Ordering::Less);
+        assert_eq!(compare("015", "0015"), Ordering::Greater);
+    }
+
+    #[test]
+    fn test_compare_word_at_a_time_diff() {
+        // Equal-length run that differs in the second u64 chunk
+        assert_eq!(
+            compare("12345678901234567890", "12345678901234567891"),
+            Ordering::Less
+        );
+    }
+
+    #[test]
+    fn test_compare_left_aligned_zeros_equal_run() {
+        // Exercises ka = pa_run - pa in left-aligned digit path.
+        // With a mutation replacing `-` with `+`, this returns wrong result.
+        assert_eq!(compare("000", "000"), Ordering::Equal);
+        assert_eq!(compare("00", "00"), Ordering::Equal);
+    }
+
+    #[test]
+    fn test_compare_ignore_case_left_aligned_zeros_equal_run() {
+        // Same for compare_ignore_case
+        assert_eq!(compare_ignore_case("000", "000"), Ordering::Equal);
+        assert_eq!(compare_ignore_case("ABC000", "abc000"), Ordering::Equal);
+    }
+
+    #[test]
+    fn test_compare_ignore_case_left_aligned_zero_mixed() {
+        // la0 true, lb0 false: `||` vs `&&` in left-aligned trigger
+        assert_eq!(compare_ignore_case("015", "12"), Ordering::Less);
+        assert_eq!(compare_ignore_case("12", "015"), Ordering::Greater);
+    }
+
+    #[test]
+    fn test_compare_same_pointer_mutation() {
+        // Kills compare.rs:12 `==` -> `!=` — with the mutation,
+        // compare("ab", "ba") returns Equal (wrong) instead of Less.
+        assert_eq!(compare("ab", "ba"), Ordering::Less);
+    }
+
+    #[test]
+    fn test_compare_ignore_case_da2_or_mutation() {
+        // Kills compare_ignore_case.rs:68:49 `&&` -> `||` in da2 definition.
+        // "00a" has shorter digit run than "000x" → Less.
+        // With da2 incorrectly true (non-digit 'a' treated as digit),
+        // the mutation enters the wrong comparison body.
+        assert_eq!(compare_ignore_case("00a", "000x"), Ordering::Less);
+    }
+
+    #[test]
+    fn test_compare_ignore_case_xor_and_mutation() {
+        // Kills compare_ignore_case.rs:132:35 `^` -> `&` and
+        // compare_ignore_case.rs:137:41 `<` -> `==`.
+        // 8-digit runs enter word-at-a-time: XOR finds diff at byte 3;
+        // AND incorrectly finds diff at byte 0 ('2'=='2') → returns
+        // Greater instead of Less.
+        assert_eq!(compare_ignore_case("22222222", "22232222"), Ordering::Less);
+    }
+
+    #[test]
+    fn test_compare_ignore_case_diff_eq_mutation() {
+        // Kills compare_ignore_case.rs:133:29 `!=` -> `==`.
+        // With `diff == 0` → false for non-zero diff, the diff body
+        // is skipped; pa_eq advances past the 8-byte chunk.  The tail
+        // is empty (0–7 bytes) so the diff is lost.  Non-digit suffix
+        // determines result: Equal instead of Less.
+        assert_eq!(
+            compare_ignore_case("22222222x", "22232222x"),
+            Ordering::Less
+        );
+    }
+
+    #[test]
+    fn test_compare_same_allocation_diff_len_mutation() {
+        // Kills compare.rs:12:16 `==` -> `!=` in length comparison.
+        // Uses same-allocation, different-length slices so that
+        // a.len() != b.len() && a.as_ptr() == b.as_ptr() → true
+        // (mutation returns Equal early, wrong).
+        let s = String::from("ab");
+        assert_eq!(compare(&s[..1], &s[..2]), Ordering::Less);
+
+        // Also test the compare_ignore_case codepath at line 13.
+        assert_eq!(compare_ignore_case(&s[..1], &s[..2]), Ordering::Less);
+    }
+
+    #[test]
+    fn test_compare_da2_or_mutation() {
+        // Kills compare.rs:68:49 `&&` -> `||` in da2 definition.
+        // "00a" has shorter digit run than "000x" → Less.
+        // With da2 incorrectly true (non-digit 'a' treated as digit),
+        // the mutation enters the wrong comparison body.
+        assert_eq!(compare("00a", "000x"), Ordering::Less);
+    }
+
+    #[test]
+    fn test_compare_word_at_a_time_tail() {
+        // Tail bytes (0–7) after u64 chunk comparison
+        assert_eq!(compare("12345678", "12345679"), Ordering::Less);
+    }
 }

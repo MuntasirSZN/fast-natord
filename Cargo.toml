@@ -10,17 +10,27 @@ repository = "https://github.com/MuntasirSZN/fast-natord"
 license = "MIT"
 keywords = ["natural", "order", "sort"]
 
+[workspace.metadata.kani.flags]
+default-unwind = "1"
+
 [[bench]]
 harness = false
 name = "natord"
+
+[dependencies]
+cpufeatures = "0.3.0"
+simd-normalizer = { version = "0.1", default-features = false, features = ["alloc"], optional = true }
+
+[dev-dependencies]
+divan = "0.1.21"
+proptest = "1"
 
 [features]
 default = []
 normalize = ["dep:simd-normalizer"]
 
-[dependencies]
-cpufeatures = "0.3.0"
-simd-normalizer = { version = "0.1", optional = true, default-features = false, features = ["alloc"] }
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
 
-[dev-dependencies]
-divan = "0.1.21"
+[target.'cfg(kani_ra)'.dependencies]
+kani = { git = "https://github.com/model-checking/kani" }

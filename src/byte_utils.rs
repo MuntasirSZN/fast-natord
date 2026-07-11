@@ -404,3 +404,236 @@ pub unsafe fn simd_skip_equal(a: &[u8], b: &[u8], i: usize, common_len: usize) -
 pub unsafe fn simd_skip_equal(a: &[u8], b: &[u8], i: usize, common_len: usize) -> usize {
     finish_scalar(a, b, i, common_len)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_digit() {
+        for b in b'0'..=b'9' {
+            assert!(is_digit(b), "byte {:?} should be a digit", b);
+        }
+        assert!(!is_digit(b' '));
+        assert!(!is_digit(b'a'));
+        assert!(!is_digit(b'Z'));
+        assert!(!is_digit(b'/'));
+        assert!(!is_digit(b':'));
+        assert!(!is_digit(b'\0'));
+    }
+
+    #[test]
+    fn test_is_ascii_ws() {
+        assert!(is_ascii_ws(b' '));
+        assert!(is_ascii_ws(b'\t'));
+        assert!(is_ascii_ws(b'\n'));
+        assert!(is_ascii_ws(b'\x0C'));
+        assert!(is_ascii_ws(b'\r'));
+        assert!(!is_ascii_ws(b'a'));
+        assert!(!is_ascii_ws(b'0'));
+        assert!(!is_ascii_ws(b'\x0B'));
+        assert!(!is_ascii_ws(b'\0'));
+    }
+
+    #[test]
+    fn test_load_u64() {
+        let data = [0x01u8, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
+        let val = unsafe { load_u64(&data, 0) };
+        assert_eq!(val, 0x0807060504030201);
+    }
+
+    #[test]
+    fn test_load_u64_offset() {
+        let data: &[u8] = b"0123456789";
+        let val = unsafe { load_u64(data, 2) };
+        // "23456789" as little-endian u64
+        assert_eq!(val, 0x3938373635343332);
+    }
+
+    #[test]
+    fn test_load_u128() {
+        let data = [
+            0x01u8, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E,
+            0x0F, 0x10,
+        ];
+        let val = unsafe { load_u128(&data, 0) };
+        assert_eq!(val, 0x100F0E0D0C0B0A090807060504030201);
+    }
+
+    #[test]
+    fn test_simd_is_ascii_empty() {
+        assert!(simd_is_ascii(b""));
+    }
+
+    #[test]
+    fn test_simd_is_ascii_short() {
+        assert!(simd_is_ascii(b"abc"));
+        assert!(!simd_is_ascii(b"\xFF"));
+        assert!(!simd_is_ascii(b"a\x80b"));
+        assert!(!simd_is_ascii(b"\x80"));
+    }
+
+    #[test]
+    fn test_simd_is_ascii_exact_16() {
+        let s = b"ABCDEFGHIJKLMNOP";
+        assert!(simd_is_ascii(s));
+        let mut ns = *s;
+        ns[15] = 0x80;
+        assert!(!simd_is_ascii(&ns));
+    }
+
+    #[test]
+    fn test_simd_is_ascii_long_ascii() {
+        let long = b"Hello, World! This is a test string longer than 16 bytes to trigger SIMD.";
+        assert!(simd_is_ascii(long));
+    }
+
+    #[test]
+    fn test_simd_is_ascii_long_non_ascii() {
+        let long = b"Hello, World! This has \x80 non-ascii byte!";
+        assert!(!simd_is_ascii(long));
+    }
+
+    #[test]
+    fn test_simd_is_ascii_non_ascii_early() {
+        let mut buf = [b'A'; 16];
+        buf[5] = 0xC0;
+        assert!(!simd_is_ascii(&buf));
+    }
+
+    #[test]
+    fn test_simd_is_ascii_non_ascii_tail() {
+        let mut buf = [b'A'; 33];
+        buf[32] = 0x80;
+        assert!(!simd_is_ascii(&buf));
+
+        let mut buf2 = [b'A'; 32];
+        buf2[31] = 0x80;
+        assert!(!simd_is_ascii(&buf2));
+    }
+
+    #[test]
+    fn test_finish_scalar_identical() {
+        let a = b"abcdefghijklmnop";
+        let b = b"abcdefghijklmnop";
+        unsafe {
+            assert_eq!(finish_scalar(a, b, 0, 16), 16);
+        }
+    }
+
+    #[test]
+    fn test_finish_scalar_diff_within_8byte_chunk() {
+        // 8 bytes, differ in last byte.
+        // 16-byte check skipped, 8-byte check finds diff → chunk start (0)
+        let a = b"1234567A";
+        let b = b"1234567B";
+        unsafe {
+            assert_eq!(finish_scalar(a, b, 0, 8), 0);
+        }
+    }
+
+    #[test]
+    fn test_finish_scalar_diff_within_16byte_chunk() {
+        // 16 bytes, differ in last byte.
+        // 16-byte chunk load detects diff, breaks into 8-byte loop which
+        // advances past the first equal 8 bytes before finding the diff.
+        let a = b"abcdefghijklmnoP";
+        let b = b"abcdefghijklmnoQ";
+        unsafe {
+            // u128 at 0: differ → break (k=0)
+            // u64 at 0: "abcdefgh" equal → k=8
+            // u64 at 8: "ijklmnoP" vs "ijklmnoQ" differ → break, return 8
+            assert_eq!(finish_scalar(a, b, 0, 16), 8);
+        }
+    }
+
+    #[test]
+    fn test_finish_scalar_diff_after_16_in_8byte_chunk() {
+        // First 16 equal (one 16-byte chunk), then diff within 8-byte chunk.
+        let a = b"abcdefghijklmnop1234567A";
+        let b = b"abcdefghijklmnop1234567B";
+        unsafe {
+            // 16-byte check at 0: passes, k=16.
+            // 8-byte check at 16: finds diff, breaks, returns 16.
+            let k = finish_scalar(a, b, 0, 24);
+            assert_eq!(k, 16);
+        }
+    }
+
+    #[test]
+    fn test_finish_scalar_short_below_8() {
+        // < 8 bytes: no 8-byte or 16-byte chunks possible, returns start offset.
+        let a = b"ab";
+        let b = b"ab";
+        unsafe {
+            assert_eq!(finish_scalar(a, b, 0, 2), 0);
+        }
+
+        let a = b"a";
+        let b = b"b";
+        unsafe {
+            assert_eq!(finish_scalar(a, b, 0, 1), 0);
+        }
+    }
+
+    #[test]
+    fn test_simd_skip_equal_identical_exact_stride() {
+        // Multiple of 16: SIMD covers completely.
+        let a = b"abcdefghijklmnop"; // 16 bytes
+        unsafe {
+            assert_eq!(simd_skip_equal(a, a, 0, 16), 16);
+        }
+        let a = b"abcdefghijklmnop1234"; // 20 bytes, tail <8 not advanced by finish_scalar
+        unsafe {
+            // SIMD covers 0..16, finish_scalar(16,20): 16+8=24>20 → returns 16
+            assert_eq!(simd_skip_equal(a, a, 0, 20), 16);
+        }
+    }
+
+    #[test]
+    fn test_simd_skip_equal_diff_first_chunk() {
+        let a = b"abcdeFghijklmnop";
+        let b = b"abcdeGghijklmnop";
+        unsafe {
+            assert_eq!(simd_skip_equal(a, b, 0, 16), 5);
+        }
+    }
+
+    #[test]
+    fn test_simd_skip_equal_diff_at_16() {
+        let a = b"abcdefghijklmnoPX";
+        let b = b"abcdefghijklmnoQY";
+        unsafe {
+            let k = simd_skip_equal(a, b, 0, 16);
+            assert_eq!(k, 15);
+        }
+    }
+
+    #[test]
+    fn test_simd_skip_equal_diff_in_tail() {
+        // Diff within <8-byte tail: finish_scalar can't advance, returns chunk start.
+        let a = b"abcdefghijklmnop12345";
+        let b = b"abcdefghijklmnop123XY";
+        unsafe {
+            // SIMD covers 0..16 (all equal), then finish_scalar(16,20):
+            // 16+8=24>20 → returns 16.
+            let k = simd_skip_equal(a, b, 0, 20);
+            assert_eq!(k, 16);
+        }
+    }
+
+    #[test]
+    fn test_simd_skip_equal_short() {
+        // < 8 bytes: no SIMD stride, finish_scalar can't skip → returns 0.
+        let a = b"short";
+        let b = b"shXrt";
+        unsafe {
+            assert_eq!(simd_skip_equal(a, b, 0, 5), 0);
+        }
+
+        let a = b"ab";
+        unsafe {
+            assert_eq!(simd_skip_equal(a, a, 0, 2), 0);
+        }
+    }
+}

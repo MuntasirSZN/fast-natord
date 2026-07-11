@@ -24,3 +24,76 @@ pub fn decode_char(s: &[u8]) -> (char, usize) {
     };
     (ch, len)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_utf8_char_len_ascii() {
+        assert_eq!(utf8_char_len(0x00), 1);
+        assert_eq!(utf8_char_len(0x7F), 1);
+        assert_eq!(utf8_char_len(b'a'), 1);
+    }
+
+    #[test]
+    fn test_utf8_char_len_2byte() {
+        assert_eq!(utf8_char_len(0xC0), 2);
+        assert_eq!(utf8_char_len(0xDF), 2);
+        assert_eq!(utf8_char_len(0xC3), 2);
+    }
+
+    #[test]
+    fn test_utf8_char_len_3byte() {
+        assert_eq!(utf8_char_len(0xE0), 3);
+        assert_eq!(utf8_char_len(0xEF), 3);
+        assert_eq!(utf8_char_len(0xE4), 3);
+    }
+
+    #[test]
+    fn test_utf8_char_len_4byte() {
+        assert_eq!(utf8_char_len(0xF0), 4);
+        assert_eq!(utf8_char_len(0xFF), 4);
+    }
+
+    #[test]
+    fn test_decode_char_ascii() {
+        assert_eq!(decode_char(b"abc"), ('a', 1));
+        assert_eq!(decode_char(b"123"), ('1', 1));
+        assert_eq!(decode_char(b" "), (' ', 1));
+    }
+
+    #[test]
+    fn test_decode_char_2byte() {
+        // U+00E9 = é = 0xC3 0xA9
+        assert_eq!(decode_char(b"\xC3\xA9"), ('\u{00E9}', 2));
+        assert_eq!(decode_char(b"\xC3\xA9!"), ('\u{00E9}', 2));
+    }
+
+    #[test]
+    fn test_decode_char_3byte() {
+        // U+4E00 = 一 = 0xE4 0xB8 0x80
+        assert_eq!(decode_char(b"\xE4\xB8\x80"), ('\u{4E00}', 3));
+    }
+
+    #[test]
+    fn test_utf8_char_len_continuation_byte() {
+        // 0x80-0xBF are continuation bytes, should be treated as 2-byte leads
+        assert_eq!(utf8_char_len(0x80), 2);
+        assert_eq!(utf8_char_len(0xBF), 2);
+    }
+
+    #[test]
+    fn test_decode_char_ascii_boundary() {
+        // 0x7F = last 1-byte (ASCII) value
+        assert_eq!(decode_char(b"\x7F"), ('\x7F', 1));
+        // 0xC2 0x80 = U+0080, first 2-byte UTF-8 sequence
+        assert_eq!(decode_char(b"\xC2\x80"), ('\u{80}', 2));
+    }
+
+    #[test]
+    fn test_decode_char_4byte() {
+        // U+1F600 = 😀 = 0xF0 0x9F 0x98 0x80
+        assert_eq!(decode_char(b"\xF0\x9F\x98\x80"), ('\u{1F600}', 4));
+    }
+}
