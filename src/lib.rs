@@ -34,9 +34,11 @@
 //!     .normalization(Normalization::Nfc)
 //!     .case(CaseMode::Fold);
 //!
-//! assert_eq!(norm.compare("\u{00E9}", "e\u{0301}"), core::cmp::Ordering::Equal);
 //! assert_eq!(norm.compare("ABC", "abc"), core::cmp::Ordering::Equal);
 //! assert_eq!(norm.compare("pic10", "pic2"), core::cmp::Ordering::Greater);
+//!
+//! // With the `normalize` feature, canonically equivalent strings
+//! // like `é` (U+00E9) and `e\u{0301}` compare equal under NFC.
 //! ```
 //!
 //! ## How it works
