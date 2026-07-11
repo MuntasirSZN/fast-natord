@@ -19,9 +19,6 @@ pub fn is_ascii_ws(c: u8) -> bool {
 }
 
 // ── SIMD ASCII detection ────────────────────────────────────────────
-//
-// Used by the normalizer to short-circuit normalization for all-ASCII
-// strings (which are already in every normal form).
 
 /// Returns `true` if every byte in `s` has bit 7 clear.
 ///
@@ -201,9 +198,6 @@ unsafe fn finish_scalar(a: &[u8], b: &[u8], mut k: usize, common_len: usize) -> 
 }
 
 // ── x86_64 ISA backends ─────────────────────────────────────────
-//
-// Each is a separate `#[target_feature]` function.  Runtime dispatch picks
-// the widest available stride with the best uop characteristics.
 
 /// SSE2 baseline — 16-byte PCMPEQB + PMOVMSKB + tzcnt.
 #[cfg(target_arch = "x86_64")]
@@ -341,12 +335,6 @@ pub unsafe fn skip_gfni_avx2(a: &[u8], b: &[u8], i: usize, common_len: usize) ->
 }
 
 // ── Runtime dispatch (x86_64) ────────────────────────────────────────
-
-// One cpufeatures module per distinct feature combination.
-// BMI1/BMI2/POPCNT are detected but the compiler already emits TZCNT
-// (BMI1) via trailing_zeros.  ERMS/FSRM are string-op features not used
-// here.  SSSE3/SSE3 add no byte-compare advantage over SSE2.
-// VAES/VPCLMULQDQ don't provide byte-equality primitives.
 
 // Priority: GFNI+AVX2 > AVX2 > SSE4.2 > SSE4.1 > SSE2.
 #[cfg(target_arch = "x86_64")]

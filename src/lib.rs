@@ -82,6 +82,9 @@
 
 #![no_std]
 #![warn(missing_docs)]
+#![warn(rustdoc::missing_doc_code_examples)]
+#![warn(clippy::missing_errors_doc)]
+#![warn(clippy::missing_panics_doc)]
 #![warn(clippy::missing_safety_doc)]
 
 extern crate alloc;
@@ -684,12 +687,97 @@ mod tests {
     }
 
     #[test]
+    fn test_compare_last_eq_digit_mutation() {
+        // Kills compare.rs:26:33 `>` -> `<` in `adv > 0`.
+        // SIMD skips common prefix "1".  adv=1, last_eq_digit=true.
+        // First differing bytes: 'a' (non-digit) vs '2' (digit).
+        // With `adv < 0` (always false for usize), last_eq_digit=false,
+        // the branch-last-digit check is skipped → wrong Greater.
+        // Natural order: shorter number wins → Less.
+        assert_eq!(compare("12345678a", "123456789a"), Ordering::Less);
+    }
+
+    #[test]
     fn test_compare_da2_or_mutation() {
         // Kills compare.rs:68:49 `&&` -> `||` in da2 definition.
         // "00a" has shorter digit run than "000x" → Less.
         // With da2 incorrectly true (non-digit 'a' treated as digit),
         // the mutation enters the wrong comparison body.
         assert_eq!(compare("00a", "000x"), Ordering::Less);
+    }
+
+    #[test]
+    fn test_compare_whitespace_pb_bound_mutation() {
+        // Kills compare.rs:44:26 `<` -> `<=` in `pb < endb` in
+        // the whitespace-skip while loop.  When the buffer ends in
+        // whitespace, the mutation reads OOB.  Vec has 3 spaces;
+        // the &str covers 2.  The 3rd space is the OOB byte.
+        // Original: pb reaches endb, rem_b=0 → Greater.
+        // Mutation: pb reads OOB space, advances past endb, rem_b
+        // wraps to usize::MAX → Less.
+        let v = alloc::vec![b' ', b' ', b' '];
+        let right = unsafe { core::str::from_utf8_unchecked(&v[..2]) };
+        assert_eq!(compare("a", right), Ordering::Greater);
+    }
+
+    #[test]
+    fn test_compare_da2_bound_mutation() {
+        // Kills compare.rs:75:42 `<` -> `<=` in `pa_run < enda`
+        // in left-aligned digit inner loop.  Vec has "002"; the
+        // &str covers "00".  When both runs are consumed, pa_run
+        // == enda.  Original: `<` short-circuits → break.
+        // Mutation: `<=` reads OOB byte '2' → is_digit → da2=true,
+        // db2=false → returns Greater (wrong, should be Equal).
+        let v = alloc::vec![b'0', b'0', b'2'];
+        let left = unsafe { core::str::from_utf8_unchecked(&v[..2]) };
+        assert_eq!(compare(left, "00"), Ordering::Equal);
+    }
+
+    #[test]
+    fn test_compare_db2_bound_mutation() {
+        // Kills compare.rs:76:42 `<` -> `<=` in `pb_run < endb`.
+        // Same trick on the right side: Vec has "002", &str covers
+        // "00".  Mutation reads OOB '2' → db2=true, da2=false →
+        // returns Less (wrong, should be Equal).
+        let v = alloc::vec![b'0', b'0', b'2'];
+        let right = unsafe { core::str::from_utf8_unchecked(&v[..2]) };
+        assert_eq!(compare("00", right), Ordering::Equal);
+    }
+
+    #[test]
+    fn test_compare_pa_scan_bound_mutation() {
+        // Kills compare.rs:94:34 `<` -> `==` / `<=` in post-break
+        // scan.  Vec has "02"; &str covers "0".  After left-aligned
+        // inner loop consumes all of "0", pa_run == enda.  Original:
+        // `pa_run < enda` → false → skip scan, ka=1.
+        // Mutation (`==`/`<=`): reads OOB v[1]=b'2' (digit) → pa_run
+        // advances → ka=2, kb=1 → returns Greater (wrong, should be
+        // Less since shorter number wins).
+        let v = alloc::vec![b'0', b'2'];
+        let left = unsafe { core::str::from_utf8_unchecked(&v[..1]) };
+        assert_eq!(compare(left, "0a"), Ordering::Less);
+    }
+
+    #[test]
+    fn test_compare_pb_scan_bound_mutation() {
+        // Kills compare.rs:97:34 `<` -> `==` / `<=` in pb scan.
+        // Vec has "02", &str covers "0" on the right side.  After
+        // the inner loop, pb_run == endb.  Mutation reads OOB '2'
+        // → kb=2, ka=1 → returns Less (wrong, should be Greater).
+        let v = alloc::vec![b'0', b'2'];
+        let right = unsafe { core::str::from_utf8_unchecked(&v[..1]) };
+        assert_eq!(compare("0a", right), Ordering::Greater);
+    }
+
+    #[test]
+    fn test_compare_ka_eq_mutation() {
+        // Kills compare.rs:103:23 `!=` -> `==` in `if ka != kb`.
+        // After left-aligned break, ka==kb always (both consumed
+        // the same number of matching digit pairs).  Original: falls
+        // through to compare post-run characters → Less.
+        // Mutation: returns ka.cmp(&kb) = Equal early, skipping
+        // the post-run 'a' vs 'b' comparison (wrong).
+        assert_eq!(compare("01a", "01b"), Ordering::Less);
     }
 
     #[test]

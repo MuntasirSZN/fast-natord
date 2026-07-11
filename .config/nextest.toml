@@ -1,5 +1,5 @@
 #:schema https://nexte.st/schemas/repo-config.json
 
-[profile.ci]
+[profile.default]
 fail-fast = false
 retries = 2

@@ -1,4 +1,30 @@
-#:schema https://www.schemastore.org/cargo-mutants-config.json
+# Unkillable mutations — equivalent, unreachable, or UB-only.
+# Excluded to keep mutation-test output focused on killable mutants.
+exclude_re = [
+    # byte_utils.rs:35 dispatch — both SIMD and scalar paths give
+    # identical results; changing the threshold only affects perf.
+    # Only the `<` dispatch variants (column 16) — the return-value
+    # mutations at column 5 are caught by existing tests.
+    'byte_utils\.rs:35:16:.*replace < with',
 
-test_tool = "nextest"
-minimum_test_timeout = 60
+    # compare.rs:81:46 — `va < vb` guarded by `va != vb` on line 80;
+    # `va <= vb` is equivalent when they're known to differ.
+    'compare\.rs:81:.*replace < with <=',
+
+    # compare.rs:94:34, 97:34 — `<` → `>` in post-break scan loop.
+    # After left-aligned break, pa_run/pb_run ≤ enda/endb, so
+    # `>` never matches.  (The `==` and `<=` variants are killed.)
+    'compare\.rs:94:.*replace < with >',
+    'compare\.rs:97:.*replace < with >',
+
+    # compare.rs:101-102 — `-` → `/` in left-aligned ka/kb.
+    # For large heap addresses, `(base + n) / base == 1` exactly,
+    # giving the same result as subtraction for equal-length runs.
+    'compare\.rs:101:.*replace - with /',
+    'compare\.rs:102:.*replace - with /',
+
+    # compare.rs:145:40 — `+` → `*` in word-at-a-time loop bound.
+    # `addr * 8 <= end_addr` is always false; tail fallback
+    # produces the same result.
+    'compare\.rs:145:.*replace \+ with \*',
+]

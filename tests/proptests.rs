@@ -1,8 +1,4 @@
 //! Property-based tests for `fast-natord`.
-//!
-//! These verify that the natural-ordering comparators satisfy the laws of a
-//! total order and maintain documented invariants across a broad range of
-//! randomly generated inputs.
 
 #![cfg(test)]
 
@@ -10,8 +6,6 @@ use core::cmp::Ordering;
 use fast_natord::{compare, compare_ignore_case, compare_iter, compare_normalized};
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
-
-// ── String strategies ────────────────────────────────────────────────
 
 /// Any valid UTF-8 string, 0–64 chars (full Unicode repertoire).
 fn any_string() -> impl Strategy<Value = String> {
@@ -36,11 +30,10 @@ fn printable_ascii() -> impl Strategy<Value = String> {
 fn alphanumeric() -> impl Strategy<Value = String> {
     prop::collection::vec(
         prop::sample::select(&[
-            'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
-            'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
-            'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
-            'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
-            '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+            'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q',
+            'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
+            'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y',
+            'Z', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
         ]),
         0..64,
     )
@@ -149,8 +142,6 @@ proptest! {
         }
     }
 }
-
-
 
 // ── Numeric properties ───────────────────────────────────────────────
 
