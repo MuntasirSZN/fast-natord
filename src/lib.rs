@@ -148,6 +148,7 @@ mod tests {
     use super::compare;
     use super::compare_ignore_case;
     use super::compare_iter;
+    use super::{CaseMode, Normalization, Normalizer};
     use alloc::string::String;
     use core::cmp::Ordering;
 
@@ -784,5 +785,100 @@ mod tests {
     fn test_compare_word_at_a_time_tail() {
         // Tail bytes (0–7) after u64 chunk comparison
         assert_eq!(compare("12345678", "12345679"), Ordering::Less);
+    }
+
+    // ── Normalizer builder mutations ──────────────────────────────────
+
+    #[test]
+    #[cfg(feature = "normalize")]
+    fn test_normalizer_nfd_mutation() {
+        // U+00E9 (NFC) → U+0065 U+0301 (NFD).
+        let nfd = Normalizer::default().nfd().normalize("\u{e9}");
+        let raw = Normalizer::default().normalize("\u{e9}");
+        assert_ne!(
+            nfd.as_ref(),
+            raw.as_ref(),
+            "nfd() should decompose precomposed characters"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "normalize")]
+    fn test_normalizer_nfkc_mutation() {
+        // U+2460 (CIRCLED DIGIT ONE) NFKC → "1"
+        let nfkc = Normalizer::default().nfkc().normalize("\u{2460}");
+        let raw = Normalizer::default().normalize("\u{2460}");
+        assert_ne!(
+            nfkc.as_ref(),
+            raw.as_ref(),
+            "nfkc() should compatibility-decompose"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "normalize")]
+    fn test_normalizer_nfkd_mutation() {
+        let nfkd = Normalizer::default().nfkd().normalize("\u{2460}");
+        let raw = Normalizer::default().normalize("\u{2460}");
+        assert_ne!(
+            nfkd.as_ref(),
+            raw.as_ref(),
+            "nfkd() should compatibility-decompose"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "normalize")]
+    fn test_normalizer_case_sensitive_mutation() {
+        // Start with NFC + case_fold, then revert case to sensitive.
+        // Without mutation: NFC normalizes both U+00E9 and e\u{0301}
+        //   to U+00E9, then case-sensitive compare → Equal.
+        // With mutation (case_sensitive is no-op): default normalizer
+        //   loses NFC normalization → byte-level compare → not Equal.
+        let norm = Normalizer::default()
+            .nfc()
+            .case_fold()
+            .case_sensitive();
+        assert_eq!(
+            norm.compare("\u{e9}", "e\u{301}"),
+            Ordering::Equal,
+            "case_sensitive should preserve NFC setting"
+        );
+    }
+
+    // ── compare_ignore_case mutation tests ───────────────────────────
+
+    #[test]
+    fn test_compare_ignore_case_pa_scan_bound_mutation() {
+        // Kills compare_ignore_case.rs:86:34 `<` -> `==` / `<=`.
+        // Vec "02" covers "0".  After left-aligned break, pa_run == enda.
+        // `<` -> `==` / `<=` reads OOB '2' (digit) → ka inflated → wrong Greater.
+        let v = alloc::vec![b'0', b'2'];
+        let left = unsafe { core::str::from_utf8_unchecked(&v[..1]) };
+        assert_eq!(compare_ignore_case(left, "0a"), Ordering::Less);
+    }
+
+    #[test]
+    fn test_compare_ignore_case_pb_scan_bound_mutation() {
+        // Kills compare_ignore_case.rs:89:34 `<` -> `==` / `<=`.
+        let v = alloc::vec![b'0', b'2'];
+        let right = unsafe { core::str::from_utf8_unchecked(&v[..1]) };
+        assert_eq!(compare_ignore_case("0a", right), Ordering::Greater);
+    }
+
+    #[test]
+    fn test_compare_ignore_case_db2_or_mutation() {
+        // Kills compare_ignore_case.rs:69:49 `&&` -> `||` in db2.
+        // "000x" has longer digit run than "00a" → Greater.
+        assert_eq!(compare_ignore_case("000x", "00a"), Ordering::Greater);
+    }
+
+    #[test]
+    fn test_compare_ignore_case_xor_div_mutation() {
+        // Kills compare_ignore_case.rs:134:63 `/` -> `*` in XOR byte_off.
+        assert_eq!(
+            compare_ignore_case("01345678", "02345678"),
+            Ordering::Less
+        );
     }
 }

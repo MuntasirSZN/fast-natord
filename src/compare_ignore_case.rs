@@ -92,7 +92,14 @@ pub fn compare_ignore_case_impl(a: &[u8], b: &[u8]) -> Ordering {
                 }
                 let ka = pa_run as usize - pa as usize;
                 let kb = pb_run as usize - pb as usize;
-                return ka.cmp(&kb);
+                if ka != kb {
+                    return ka.cmp(&kb);
+                }
+                // Equal-length left-aligned runs that matched: continue
+                // the main loop to compare post-run characters.
+                pa = pa_run;
+                pb = pb_run;
+                continue;
             }
 
             // Right-aligned: longer significant run wins; equal length →
