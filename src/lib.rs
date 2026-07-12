@@ -785,4 +785,29 @@ mod tests {
     fn test_compare_ignore_case_xor_div() {
         assert_eq!(compare_ignore_case("01345678", "02345678"), Ordering::Less);
     }
+
+    #[test]
+    fn test_compare_ignore_case_xor_mul() {
+        assert_eq!(
+            compare_ignore_case(
+                "266666666666666612345678",
+                "666666666666666612345678",
+            ),
+            Ordering::Less,
+        );
+    }
+
+    #[test]
+    fn test_compare_ignore_case_pbr_bound() {
+        let v = alloc::vec![b'a', b'b', b'c', b'3', b'9', b'x'];
+        let right = unsafe { core::str::from_utf8_unchecked(&v[..4]) };
+        assert_eq!(compare_ignore_case("abc29", right), Ordering::Greater);
+    }
+
+    #[test]
+    fn test_compare_ignore_case_ws_pb_bound() {
+        let v = alloc::vec![b'a', b' ', b' '];
+        let right = unsafe { core::str::from_utf8_unchecked(&v[..2]) };
+        assert_eq!(compare_ignore_case("ab", right), Ordering::Greater);
+    }
 }

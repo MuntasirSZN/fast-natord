@@ -37,12 +37,12 @@ exclude_re = [
     # produces a value > end_run, making the loop body dead.
     'compare\.rs:145:.*replace \+ with \*',
 
-    # Lines 153, 163, 196: `pa_eq < end_run` / similar — `<`→`<=`
+    # Lines 153, 163, 194: `pa_eq < end_run` / similar — `<`→`<=`
     # runs one extra iteration when the count is already zero;
     # OOB read can't be distinguished in safe tests.
     'compare\.rs:153:.*replace < with <=',
     'compare\.rs:163:.*replace < with <=',
-    'compare\.rs:196:.*replace < with <=',
+    'compare\.rs:194:.*replace < with <=',
 
     # ── compare_ignore_case.rs guarded expressions ────────────────
     # Line 74: `va < vb` guarded by `va != vb`.
