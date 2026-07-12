@@ -10,12 +10,17 @@ jobs:
   run-kani:
     runs-on: ubuntu-latest
     steps:
-      - name: "Checkout your code."
+      - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      - run: sudo apt install bitwuzla
-      - name: "Run Kani on your code."
+      - run: |
+         git clone https://github.com/bitwuzla/bitwuzla
+         cd bitwuzla
+
+         ./configure.py
+         cd build && ninja install
+      - name: Run Kani on your code
         uses: model-checking/kani-github-action@f838096619a707b0f6b2118cf435eaccfa33e51f # v1.1
         with:
           args: --solver bitwuzla
