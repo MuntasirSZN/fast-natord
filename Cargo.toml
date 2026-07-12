@@ -29,5 +29,7 @@ normalize = ["dep:simd-normalizer"]
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
 
-[target.'cfg(kani_ra)'.dependencies]
+# IDE in windows won't work, CI fails with path too long, woraround
+# until a solution is found.
+[target.'cfg(all(kani_ra, not(target_os = "windows")))'.dependencies]
 kani = { git = "https://github.com/model-checking/kani" }

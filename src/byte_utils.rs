@@ -378,7 +378,12 @@ pub unsafe fn simd_skip_equal(a: &[u8], b: &[u8], i: usize, common_len: usize) -
             let va = vld1q_u8(a.as_ptr().add(k));
             let vb = vld1q_u8(b.as_ptr().add(k));
             if vminvq_u8(vceqq_u8(va, vb)) != 0xFF {
-                break;
+                // Difference found inside this 16-byte chunk.
+                // Bounded to ≤16 iterations, runs at most once.
+                while a[k] == b[k] {
+                    k += 1;
+                }
+                return k;
             }
             k += 16;
         }

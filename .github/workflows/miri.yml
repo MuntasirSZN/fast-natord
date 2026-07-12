@@ -9,8 +9,12 @@ on:
 
 jobs:
   miri:
-    name: Miri (undefined behaviour check)
-    runs-on: ubuntu-latest
+    name: Miri (undefined behaviour check) — ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: read
     steps:
