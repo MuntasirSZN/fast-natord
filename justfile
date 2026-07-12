@@ -7,7 +7,7 @@ tools := "cargo-nextest cargo-deny cargo-llvm-cov cargo-watch cargo-hack kani-ve
 format := "cargo fmt --all"
 clippy := "cargo clippy --all-targets --all-features"
 coverage := "cargo llvm-cov --all-features --workspace"
-build := "cargo build --all --locked"
+build := "cargo build --all-features --locked"
 nextest := "cargo hack nextest run --locked --optional-deps --each-feature"
 
 # Default recipe (shows help)

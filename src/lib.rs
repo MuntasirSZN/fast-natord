@@ -145,6 +145,7 @@ pub use normalizer::{CaseMode, Normalization, Normalizer, compare_normalized};
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "normalize")]
     use super::Normalizer;
     use super::compare;
     use super::compare_ignore_case;
@@ -343,15 +344,6 @@ mod tests {
     }
 
     // ── compare_ignore_case edge cases ───────────────────────────────
-
-    //
-    // CAUTION: `compare_ignore_case_impl` operates byte-at-a-time, which
-    // works for ASCII but has a known limitation with multi-byte UTF-8:
-    // when two non-ASCII codepoints share the same leading byte, the
-    // continuation bytes reach the decode-char path as standalone
-    // bytes (not valid UTF-8 lead bytes).  The tests below only use
-    // non-ASCII codepoints whose leading bytes differ.
-    //
 
     #[test]
     fn test_ignore_case_mixed_ascii_non_ascii() {

@@ -19,7 +19,7 @@ cpufeatures = "0.3.0"
 simd-normalizer = { version = "0.1", default-features = false, features = ["alloc"], optional = true }
 
 [dev-dependencies]
-divan = "0.1.21"
+divan = { version = "5", package = "codspeed-divan-compat" }
 proptest = "1"
 
 [features]
@@ -31,5 +31,5 @@ unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
 
 # IDE in windows won't work, CI fails with path too long, woraround
 # until a solution is found.
-[target.'cfg(all(kani_ra, not(target_os = "windows")))'.dependencies]
+[target.'cfg(kani_ra)'.dependencies]
 kani = { git = "https://github.com/model-checking/kani" }
