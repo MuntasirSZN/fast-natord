@@ -10,9 +10,6 @@ repository = "https://github.com/MuntasirSZN/fast-natord"
 license = "MIT"
 keywords = ["natural", "order", "sort"]
 
-[workspace.metadata.kani.flags]
-default-unwind = "1"
-
 [[bench]]
 harness = false
 name = "natord"

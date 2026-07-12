@@ -97,3 +97,50 @@ mod tests {
         assert_eq!(decode_char(b"\xF0\x9F\x98\x80"), ('\u{1F600}', 4));
     }
 }
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    #[kani::proof]
+    fn utf8_char_len_matches_char_len_utf8() {
+        let c: char = kani::any();
+        let mut buf = [0u8; 4];
+        let s = c.encode_utf8(&mut buf);
+        assert_eq!(utf8_char_len(s.as_bytes()[0]), c.len_utf8());
+    }
+
+    #[kani::proof]
+    fn decode_char_roundtrip_exact() {
+        let c: char = kani::any();
+        let mut buf = [0u8; 4];
+        let len = c.encode_utf8(&mut buf).len();
+        let (decoded, adv) = decode_char(&buf[..len]);
+        assert_eq!(decoded, c);
+        assert_eq!(adv, len);
+    }
+
+    const TRAIL: usize = 4;
+
+    #[kani::proof]
+    #[kani::unwind(6)]
+    fn decode_char_roundtrip_with_trailing_garbage() {
+        let c: char = kani::any();
+        let mut buf = [0u8; 4 + TRAIL];
+        let clen = c.encode_utf8(&mut buf).len();
+
+        let trailing: [u8; TRAIL] = kani::any();
+        let mut i = 0;
+        while i < TRAIL {
+            buf[clen + i] = trailing[i];
+            i += 1;
+        }
+
+        let extra: usize = kani::any();
+        kani::assume(extra <= TRAIL);
+
+        let (decoded, adv) = decode_char(&buf[..clen + extra]);
+        assert_eq!(decoded, c);
+        assert_eq!(adv, clen);
+    }
+}

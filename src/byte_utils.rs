@@ -113,7 +113,7 @@ pub unsafe fn simd_is_ascii_avx2(s: &[u8]) -> bool {
 #[cfg(target_arch = "x86_64")]
 cpufeatures::new!(cpuid_ascii_avx2, "avx2");
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", not(kani)))]
 #[inline(always)]
 unsafe fn simd_is_ascii_impl(s: &[u8]) -> bool {
     unsafe {
@@ -162,7 +162,7 @@ pub unsafe fn simd_is_ascii_neon(s: &[u8]) -> bool {
     }
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(target_arch = "aarch64", not(kani)))]
 #[inline(always)]
 unsafe fn simd_is_ascii_impl(s: &[u8]) -> bool {
     unsafe { simd_is_ascii_neon(s) }
@@ -170,7 +170,7 @@ unsafe fn simd_is_ascii_impl(s: &[u8]) -> bool {
 
 // ── Non-SIMD fallback ──────────────────────────────────────────────
 
-#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+#[cfg(any(kani, not(any(target_arch = "x86_64", target_arch = "aarch64"))))]
 #[inline(always)]
 unsafe fn simd_is_ascii_impl(s: &[u8]) -> bool {
     !s.iter().any(|&b| b >= 128)
@@ -346,7 +346,7 @@ cpufeatures::new!(cpuid_sse42, "sse4.2");
 #[cfg(target_arch = "x86_64")]
 cpufeatures::new!(cpuid_sse41, "sse4.1");
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", not(kani)))]
 #[inline(always)]
 pub unsafe fn simd_skip_equal(a: &[u8], b: &[u8], i: usize, common_len: usize) -> usize {
     unsafe {
@@ -368,7 +368,7 @@ pub unsafe fn simd_skip_equal(a: &[u8], b: &[u8], i: usize, common_len: usize) -
 
 // ── AArch64 ──────────────────────────────────────────────────────────
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(target_arch = "aarch64", not(kani)))]
 #[target_feature(enable = "neon")]
 pub unsafe fn simd_skip_equal(a: &[u8], b: &[u8], i: usize, common_len: usize) -> usize {
     use core::arch::aarch64::*;
@@ -388,7 +388,7 @@ pub unsafe fn simd_skip_equal(a: &[u8], b: &[u8], i: usize, common_len: usize) -
 
 // ── Other architectures (scalar only) ───────────────────────────────
 
-#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+#[cfg(any(kani, not(any(target_arch = "x86_64", target_arch = "aarch64"))))]
 pub unsafe fn simd_skip_equal(a: &[u8], b: &[u8], i: usize, common_len: usize) -> usize {
     finish_scalar(a, b, i, common_len)
 }
@@ -622,6 +622,118 @@ mod tests {
         let a = b"ab";
         unsafe {
             assert_eq!(simd_skip_equal(a, a, 0, 2), 0);
+        }
+    }
+}
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    #[kani::proof]
+    fn is_digit_matches_spec() {
+        let c: u8 = kani::any();
+        let spec = (b'0'..=b'9').contains(&c);
+        assert_eq!(is_digit(c), spec);
+    }
+
+    #[kani::proof]
+    fn is_ascii_ws_matches_spec() {
+        let c: u8 = kani::any();
+        let spec = c == b' ' || c == b'\t' || c == b'\n' || c == b'\x0C' || c == b'\r';
+        assert_eq!(is_ascii_ws(c), spec);
+    }
+
+    #[kani::proof]
+    fn load_u64_in_bounds() {
+        const N: usize = 24;
+        let data: [u8; N] = kani::any();
+        let i: usize = kani::any();
+        kani::assume(i + 8 <= N);
+        let _ = unsafe { load_u64(&data, i) };
+    }
+
+    #[kani::proof]
+    fn load_u128_in_bounds() {
+        const N: usize = 40;
+        let data: [u8; N] = kani::any();
+        let i: usize = kani::any();
+        kani::assume(i + 16 <= N);
+        let _ = unsafe { load_u128(&data, i) };
+    }
+
+    const FS_LEN: usize = 24;
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn finish_scalar_contract() {
+        let a: [u8; FS_LEN] = kani::any();
+        let b: [u8; FS_LEN] = kani::any();
+        let k: usize = kani::any();
+        let common_len: usize = kani::any();
+        kani::assume(k <= common_len);
+        kani::assume(common_len <= FS_LEN);
+
+        let r = unsafe { finish_scalar(&a, &b, k, common_len) };
+
+        assert!(r >= k);
+        assert!(r <= common_len);
+
+        let mut idx = k;
+        while idx < r {
+            assert_eq!(a[idx], b[idx]);
+            idx += 1;
+        }
+    }
+
+    const SK_LEN: usize = 24;
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn simd_skip_equal_contract() {
+        let a: [u8; SK_LEN] = kani::any();
+        let b: [u8; SK_LEN] = kani::any();
+        let common_len: usize = kani::any();
+        kani::assume(common_len <= SK_LEN);
+
+        let r = unsafe { simd_skip_equal(&a, &b, 0, common_len) };
+
+        assert!(r <= common_len);
+        let mut idx = 0;
+        while idx < r {
+            assert_eq!(a[idx], b[idx]);
+            idx += 1;
+        }
+        // Maximality: if the skip stopped short of common_len, the very
+        // next byte pair must actually differ (otherwise it should have
+        // kept skipping). This is what makes the *caller's* use of the
+        // result (compare.rs reading a[adv], b[adv] next) safe: nothing
+        // upstream ever inspects a byte that was already proven equal
+        // and assumes it's a mismatch, or vice versa.
+        if r < common_len {
+            assert_ne!(a[r], b[r]);
+        }
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn skip_sse2_contract() {
+        let a: [u8; SK_LEN] = kani::any();
+        let b: [u8; SK_LEN] = kani::any();
+        let common_len: usize = kani::any();
+        kani::assume(common_len <= SK_LEN);
+
+        let r = unsafe { skip_sse2(&a, &b, 0, common_len) };
+
+        assert!(r <= common_len);
+        let mut idx = 0;
+        while idx < r {
+            assert_eq!(a[idx], b[idx]);
+            idx += 1;
+        }
+        if r < common_len {
+            assert_ne!(a[r], b[r]);
         }
     }
 }

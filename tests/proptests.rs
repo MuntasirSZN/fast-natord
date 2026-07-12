@@ -1,6 +1,7 @@
 //! Property-based tests for `fast-natord`.
 
 #![cfg(test)]
+#![cfg(not(miri))]
 
 use core::cmp::Ordering;
 use fast_natord::{compare, compare_ignore_case, compare_iter, compare_normalized};

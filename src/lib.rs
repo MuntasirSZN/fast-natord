@@ -145,10 +145,10 @@ pub use normalizer::{CaseMode, Normalization, Normalizer, compare_normalized};
 
 #[cfg(test)]
 mod tests {
+    use super::Normalizer;
     use super::compare;
     use super::compare_ignore_case;
     use super::compare_iter;
-    use super::{CaseMode, Normalization, Normalizer};
     use alloc::string::String;
     use core::cmp::Ordering;
 
@@ -615,8 +615,6 @@ mod tests {
 
     #[test]
     fn test_compare_left_aligned_zeros_equal_run() {
-        // Exercises ka = pa_run - pa in left-aligned digit path.
-        // With a mutation replacing `-` with `+`, this returns wrong result.
         assert_eq!(compare("000", "000"), Ordering::Equal);
         assert_eq!(compare("00", "00"), Ordering::Equal);
     }
@@ -636,38 +634,22 @@ mod tests {
     }
 
     #[test]
-    fn test_compare_same_pointer_mutation() {
-        // Kills compare.rs:12 `==` -> `!=` — with the mutation,
-        // compare("ab", "ba") returns Equal (wrong) instead of Less.
+    fn test_compare_same_pointer() {
         assert_eq!(compare("ab", "ba"), Ordering::Less);
     }
 
     #[test]
-    fn test_compare_ignore_case_da2_or_mutation() {
-        // Kills compare_ignore_case.rs:68:49 `&&` -> `||` in da2 definition.
-        // "00a" has shorter digit run than "000x" → Less.
-        // With da2 incorrectly true (non-digit 'a' treated as digit),
-        // the mutation enters the wrong comparison body.
+    fn test_compare_ignore_case_da2_or() {
         assert_eq!(compare_ignore_case("00a", "000x"), Ordering::Less);
     }
 
     #[test]
-    fn test_compare_ignore_case_xor_and_mutation() {
-        // Kills compare_ignore_case.rs:132:35 `^` -> `&` and
-        // compare_ignore_case.rs:137:41 `<` -> `==`.
-        // 8-digit runs enter word-at-a-time: XOR finds diff at byte 3;
-        // AND incorrectly finds diff at byte 0 ('2'=='2') → returns
-        // Greater instead of Less.
+    fn test_compare_ignore_case_xor_and() {
         assert_eq!(compare_ignore_case("22222222", "22232222"), Ordering::Less);
     }
 
     #[test]
-    fn test_compare_ignore_case_diff_eq_mutation() {
-        // Kills compare_ignore_case.rs:133:29 `!=` -> `==`.
-        // With `diff == 0` → false for non-zero diff, the diff body
-        // is skipped; pa_eq advances past the 8-byte chunk.  The tail
-        // is empty (0–7 bytes) so the diff is lost.  Non-digit suffix
-        // determines result: Equal instead of Less.
+    fn test_compare_ignore_case_diff_eq() {
         assert_eq!(
             compare_ignore_case("22222222x", "22232222x"),
             Ordering::Less
@@ -675,11 +657,7 @@ mod tests {
     }
 
     #[test]
-    fn test_compare_same_allocation_diff_len_mutation() {
-        // Kills compare.rs:12:16 `==` -> `!=` in length comparison.
-        // Uses same-allocation, different-length slices so that
-        // a.len() != b.len() && a.as_ptr() == b.as_ptr() → true
-        // (mutation returns Equal early, wrong).
+    fn test_compare_same_allocation_diff_len() {
         let s = String::from("ab");
         assert_eq!(compare(&s[..1], &s[..2]), Ordering::Less);
 
@@ -688,96 +666,52 @@ mod tests {
     }
 
     #[test]
-    fn test_compare_last_eq_digit_mutation() {
-        // Kills compare.rs:26:33 `>` -> `<` in `adv > 0`.
-        // SIMD skips common prefix "1".  adv=1, last_eq_digit=true.
-        // First differing bytes: 'a' (non-digit) vs '2' (digit).
-        // With `adv < 0` (always false for usize), last_eq_digit=false,
-        // the branch-last-digit check is skipped → wrong Greater.
-        // Natural order: shorter number wins → Less.
+    fn test_compare_last_eq_digit() {
         assert_eq!(compare("12345678a", "123456789a"), Ordering::Less);
     }
 
     #[test]
-    fn test_compare_da2_or_mutation() {
-        // Kills compare.rs:68:49 `&&` -> `||` in da2 definition.
-        // "00a" has shorter digit run than "000x" → Less.
-        // With da2 incorrectly true (non-digit 'a' treated as digit),
-        // the mutation enters the wrong comparison body.
+    fn test_compare_da2_or() {
         assert_eq!(compare("00a", "000x"), Ordering::Less);
     }
 
     #[test]
-    fn test_compare_whitespace_pb_bound_mutation() {
-        // Kills compare.rs:44:26 `<` -> `<=` in `pb < endb` in
-        // the whitespace-skip while loop.  When the buffer ends in
-        // whitespace, the mutation reads OOB.  Vec has 3 spaces;
-        // the &str covers 2.  The 3rd space is the OOB byte.
-        // Original: pb reaches endb, rem_b=0 → Greater.
-        // Mutation: pb reads OOB space, advances past endb, rem_b
-        // wraps to usize::MAX → Less.
+    fn test_compare_whitespace_pb_bound() {
         let v = alloc::vec![b' ', b' ', b' '];
         let right = unsafe { core::str::from_utf8_unchecked(&v[..2]) };
         assert_eq!(compare("a", right), Ordering::Greater);
     }
 
     #[test]
-    fn test_compare_da2_bound_mutation() {
-        // Kills compare.rs:75:42 `<` -> `<=` in `pa_run < enda`
-        // in left-aligned digit inner loop.  Vec has "002"; the
-        // &str covers "00".  When both runs are consumed, pa_run
-        // == enda.  Original: `<` short-circuits → break.
-        // Mutation: `<=` reads OOB byte '2' → is_digit → da2=true,
-        // db2=false → returns Greater (wrong, should be Equal).
+    fn test_compare_da2_bound() {
         let v = alloc::vec![b'0', b'0', b'2'];
         let left = unsafe { core::str::from_utf8_unchecked(&v[..2]) };
         assert_eq!(compare(left, "00"), Ordering::Equal);
     }
 
     #[test]
-    fn test_compare_db2_bound_mutation() {
-        // Kills compare.rs:76:42 `<` -> `<=` in `pb_run < endb`.
-        // Same trick on the right side: Vec has "002", &str covers
-        // "00".  Mutation reads OOB '2' → db2=true, da2=false →
-        // returns Less (wrong, should be Equal).
+    fn test_compare_db2_bound() {
         let v = alloc::vec![b'0', b'0', b'2'];
         let right = unsafe { core::str::from_utf8_unchecked(&v[..2]) };
         assert_eq!(compare("00", right), Ordering::Equal);
     }
 
     #[test]
-    fn test_compare_pa_scan_bound_mutation() {
-        // Kills compare.rs:94:34 `<` -> `==` / `<=` in post-break
-        // scan.  Vec has "02"; &str covers "0".  After left-aligned
-        // inner loop consumes all of "0", pa_run == enda.  Original:
-        // `pa_run < enda` → false → skip scan, ka=1.
-        // Mutation (`==`/`<=`): reads OOB v[1]=b'2' (digit) → pa_run
-        // advances → ka=2, kb=1 → returns Greater (wrong, should be
-        // Less since shorter number wins).
+    fn test_compare_pa_scan_bound() {
         let v = alloc::vec![b'0', b'2'];
         let left = unsafe { core::str::from_utf8_unchecked(&v[..1]) };
         assert_eq!(compare(left, "0a"), Ordering::Less);
     }
 
     #[test]
-    fn test_compare_pb_scan_bound_mutation() {
-        // Kills compare.rs:97:34 `<` -> `==` / `<=` in pb scan.
-        // Vec has "02", &str covers "0" on the right side.  After
-        // the inner loop, pb_run == endb.  Mutation reads OOB '2'
-        // → kb=2, ka=1 → returns Less (wrong, should be Greater).
+    fn test_compare_pb_scan_bound() {
         let v = alloc::vec![b'0', b'2'];
         let right = unsafe { core::str::from_utf8_unchecked(&v[..1]) };
         assert_eq!(compare("0a", right), Ordering::Greater);
     }
 
     #[test]
-    fn test_compare_ka_eq_mutation() {
-        // Kills compare.rs:103:23 `!=` -> `==` in `if ka != kb`.
-        // After left-aligned break, ka==kb always (both consumed
-        // the same number of matching digit pairs).  Original: falls
-        // through to compare post-run characters → Less.
-        // Mutation: returns ka.cmp(&kb) = Equal early, skipping
-        // the post-run 'a' vs 'b' comparison (wrong).
+    fn test_compare_ka_eq() {
         assert_eq!(compare("01a", "01b"), Ordering::Less);
     }
 
@@ -787,11 +721,9 @@ mod tests {
         assert_eq!(compare("12345678", "12345679"), Ordering::Less);
     }
 
-    // ── Normalizer builder mutations ──────────────────────────────────
-
     #[test]
     #[cfg(feature = "normalize")]
-    fn test_normalizer_nfd_mutation() {
+    fn test_normalizer_nfd() {
         // U+00E9 (NFC) → U+0065 U+0301 (NFD).
         let nfd = Normalizer::default().nfd().normalize("\u{e9}");
         let raw = Normalizer::default().normalize("\u{e9}");
@@ -804,7 +736,7 @@ mod tests {
 
     #[test]
     #[cfg(feature = "normalize")]
-    fn test_normalizer_nfkc_mutation() {
+    fn test_normalizer_nfkc() {
         // U+2460 (CIRCLED DIGIT ONE) NFKC → "1"
         let nfkc = Normalizer::default().nfkc().normalize("\u{2460}");
         let raw = Normalizer::default().normalize("\u{2460}");
@@ -817,7 +749,7 @@ mod tests {
 
     #[test]
     #[cfg(feature = "normalize")]
-    fn test_normalizer_nfkd_mutation() {
+    fn test_normalizer_nfkd() {
         let nfkd = Normalizer::default().nfkd().normalize("\u{2460}");
         let raw = Normalizer::default().normalize("\u{2460}");
         assert_ne!(
@@ -829,16 +761,8 @@ mod tests {
 
     #[test]
     #[cfg(feature = "normalize")]
-    fn test_normalizer_case_sensitive_mutation() {
-        // Start with NFC + case_fold, then revert case to sensitive.
-        // Without mutation: NFC normalizes both U+00E9 and e\u{0301}
-        //   to U+00E9, then case-sensitive compare → Equal.
-        // With mutation (case_sensitive is no-op): default normalizer
-        //   loses NFC normalization → byte-level compare → not Equal.
-        let norm = Normalizer::default()
-            .nfc()
-            .case_fold()
-            .case_sensitive();
+    fn test_normalizer_case_sensitive() {
+        let norm = Normalizer::default().nfc().case_fold().case_sensitive();
         assert_eq!(
             norm.compare("\u{e9}", "e\u{301}"),
             Ordering::Equal,
@@ -846,39 +770,27 @@ mod tests {
         );
     }
 
-    // ── compare_ignore_case mutation tests ───────────────────────────
-
     #[test]
-    fn test_compare_ignore_case_pa_scan_bound_mutation() {
-        // Kills compare_ignore_case.rs:86:34 `<` -> `==` / `<=`.
-        // Vec "02" covers "0".  After left-aligned break, pa_run == enda.
-        // `<` -> `==` / `<=` reads OOB '2' (digit) → ka inflated → wrong Greater.
+    fn test_compare_ignore_case_pa_scan_bound() {
         let v = alloc::vec![b'0', b'2'];
         let left = unsafe { core::str::from_utf8_unchecked(&v[..1]) };
         assert_eq!(compare_ignore_case(left, "0a"), Ordering::Less);
     }
 
     #[test]
-    fn test_compare_ignore_case_pb_scan_bound_mutation() {
-        // Kills compare_ignore_case.rs:89:34 `<` -> `==` / `<=`.
+    fn test_compare_ignore_case_pb_scan_bound() {
         let v = alloc::vec![b'0', b'2'];
         let right = unsafe { core::str::from_utf8_unchecked(&v[..1]) };
         assert_eq!(compare_ignore_case("0a", right), Ordering::Greater);
     }
 
     #[test]
-    fn test_compare_ignore_case_db2_or_mutation() {
-        // Kills compare_ignore_case.rs:69:49 `&&` -> `||` in db2.
-        // "000x" has longer digit run than "00a" → Greater.
+    fn test_compare_ignore_case_db2_or() {
         assert_eq!(compare_ignore_case("000x", "00a"), Ordering::Greater);
     }
 
     #[test]
-    fn test_compare_ignore_case_xor_div_mutation() {
-        // Kills compare_ignore_case.rs:134:63 `/` -> `*` in XOR byte_off.
-        assert_eq!(
-            compare_ignore_case("01345678", "02345678"),
-            Ordering::Less
-        );
+    fn test_compare_ignore_case_xor_div() {
+        assert_eq!(compare_ignore_case("01345678", "02345678"), Ordering::Less);
     }
 }

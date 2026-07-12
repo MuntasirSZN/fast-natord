@@ -181,9 +181,7 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
         // aligned matching byte was a digit: the digit run may continue on
         // one side but not the other, so the longer run wins.
         if ca != cb {
-            if last_eq_digit
-                && byte_utils::is_digit(ca) != byte_utils::is_digit(cb)
-            {
+            if last_eq_digit && byte_utils::is_digit(ca) != byte_utils::is_digit(cb) {
                 // Last aligned bytes were a matching digit run; one side's
                 // digit run continues while the other's has ended → longer
                 // run wins.
@@ -201,5 +199,173 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
             pa = pa.add(1);
             pb = pb.add(1);
         }
+    }
+}
+
+#[cfg(kani)]
+mod kani_proofs {
+    use super::*;
+
+    const SAFE_LEN: usize = 6;
+
+    #[kani::proof]
+    #[kani::unwind(10)]
+    fn compare_impl_memory_safe() {
+        let len_a: usize = kani::any();
+        let len_b: usize = kani::any();
+        kani::assume(len_a <= SAFE_LEN);
+        kani::assume(len_b <= SAFE_LEN);
+        let a: [u8; SAFE_LEN] = kani::any();
+        let b: [u8; SAFE_LEN] = kani::any();
+        let _ = compare_impl(&a[..len_a], &b[..len_b]);
+    }
+
+    const MAX_LEN: usize = 4;
+    const ALPHABET: [u8; 5] = [b'0', b'1', b'9', b'a', b' '];
+
+    fn any_string(len: usize) -> [u8; MAX_LEN] {
+        let mut buf = [0u8; MAX_LEN];
+        let mut i = 0;
+        while i < MAX_LEN {
+            if i < len {
+                let idx: usize = kani::any();
+                kani::assume(idx < ALPHABET.len());
+                buf[i] = ALPHABET[idx];
+            }
+            i += 1;
+        }
+        buf
+    }
+
+    #[kani::proof]
+    #[kani::unwind(10)]
+    fn compare_impl_reflexive() {
+        let len: usize = kani::any();
+        kani::assume(len <= MAX_LEN);
+        let buf = any_string(len);
+        let s = &buf[..len];
+        assert_eq!(compare_impl(s, s), Equal);
+    }
+
+    #[kani::proof]
+    #[kani::unwind(10)]
+    fn compare_impl_antisymmetric() {
+        let len_a: usize = kani::any();
+        let len_b: usize = kani::any();
+        kani::assume(len_a <= MAX_LEN && len_b <= MAX_LEN);
+        let ba = any_string(len_a);
+        let bb = any_string(len_b);
+        let a = &ba[..len_a];
+        let b = &bb[..len_b];
+        assert_eq!(compare_impl(a, b), compare_impl(b, a).reverse());
+    }
+
+    const TRANS_LEN: usize = 3;
+    const TRANS_ALPHABET: [u8; 3] = [b'0', b'1', b'a'];
+
+    fn any_trans_string(len: usize) -> [u8; TRANS_LEN] {
+        let mut buf = [0u8; TRANS_LEN];
+        let mut i = 0;
+        while i < TRANS_LEN {
+            if i < len {
+                let idx: usize = kani::any();
+                kani::assume(idx < TRANS_ALPHABET.len());
+                buf[i] = TRANS_ALPHABET[idx];
+            }
+            i += 1;
+        }
+        buf
+    }
+
+    #[kani::proof]
+    #[kani::unwind(10)]
+    fn compare_impl_transitive() {
+        let len_a: usize = kani::any();
+        let len_b: usize = kani::any();
+        let len_c: usize = kani::any();
+        kani::assume(len_a <= TRANS_LEN && len_b <= TRANS_LEN && len_c <= TRANS_LEN);
+        let ba = any_trans_string(len_a);
+        let bb = any_trans_string(len_b);
+        let bc = any_trans_string(len_c);
+        let a = &ba[..len_a];
+        let b = &bb[..len_b];
+        let c = &bc[..len_c];
+
+        let ab = compare_impl(a, b);
+        let bc_ord = compare_impl(b, c);
+        let ac = compare_impl(a, c);
+
+        // a <= b and b <= c implies a <= c (and strictly, if either
+        // input relation is strict).
+        if ab != Greater && bc_ord != Greater {
+            assert_ne!(ac, Greater);
+        }
+        if ab != Less && bc_ord != Less {
+            assert_ne!(ac, Less);
+        }
+    }
+
+    const NUM_LEN: usize = 4;
+
+    fn digits_to_value(buf: &[u8]) -> u64 {
+        let mut v: u64 = 0;
+        let mut i = 0;
+        while i < buf.len() {
+            v = v * 10 + (buf[i] - b'0') as u64;
+            i += 1;
+        }
+        v
+    }
+
+    fn any_digit_run(len: usize, forbid_leading_zero: bool) -> [u8; NUM_LEN] {
+        let mut buf = [0u8; NUM_LEN];
+        let mut i = 0;
+        while i < NUM_LEN {
+            if i < len {
+                let d: u8 = kani::any();
+                kani::assume(d <= 9);
+                buf[i] = b'0' + d;
+            }
+            i += 1;
+        }
+        if forbid_leading_zero && len > 1 {
+            kani::assume(buf[0] != b'0');
+        }
+        buf
+    }
+
+    #[kani::proof]
+    #[kani::unwind(6)]
+    fn compare_impl_right_aligned_matches_integer_value() {
+        let len_a: usize = kani::any();
+        let len_b: usize = kani::any();
+        kani::assume(len_a >= 1 && len_a <= NUM_LEN);
+        kani::assume(len_b >= 1 && len_b <= NUM_LEN);
+
+        let ba = any_digit_run(len_a, true);
+        let bb = any_digit_run(len_b, true);
+        let a = &ba[..len_a];
+        let b = &bb[..len_b];
+
+        let expected = digits_to_value(a).cmp(&digits_to_value(b));
+        assert_eq!(compare_impl(a, b), expected);
+    }
+
+    #[kani::proof]
+    #[kani::unwind(6)]
+    fn compare_impl_leading_zero_matches_lexicographic() {
+        let len_a: usize = kani::any();
+        let len_b: usize = kani::any();
+        kani::assume(len_a >= 1 && len_a <= NUM_LEN);
+        kani::assume(len_b >= 1 && len_b <= NUM_LEN);
+
+        let ba = any_digit_run(len_a, false);
+        let bb = any_digit_run(len_b, false);
+        kani::assume(ba[0] == b'0');
+        kani::assume(bb[0] == b'0');
+        let a = &ba[..len_a];
+        let b = &bb[..len_b];
+
+        assert_eq!(compare_impl(a, b), a.cmp(b));
     }
 }
