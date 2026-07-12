@@ -16,9 +16,14 @@
 # behavioural defects.
 exclude_re = [
     # ── byte_utils.rs dispatch threshold ──────────────────────────
-    # Changing `s.len() < 16` to `==`/`>/`<=` only selects a
+    # Changing `s.len() < 16` to `==`/`>`/`<=` only selects a
     # different SIMD path; both paths give identical results.
     'byte_utils\.rs:32:16:.*replace < with',
+
+    # ── Kani proof functions ─────────────────────────────────────
+    # Verified by `cargo kani`, not by `cargo test`.  Mutations
+    # survive because the standard test suite never exercises them.
+    'kani_proofs',
 
     # ── compare.rs guarded expressions ────────────────────────────
     # Line 81: `va < vb` guarded by `va != vb` on line 80.
