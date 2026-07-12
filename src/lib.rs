@@ -789,10 +789,7 @@ mod tests {
     #[test]
     fn test_compare_ignore_case_xor_mul() {
         assert_eq!(
-            compare_ignore_case(
-                "266666666666666612345678",
-                "666666666666666612345678",
-            ),
+            compare_ignore_case("266666666666666612345678", "666666666666666612345678",),
             Ordering::Less,
         );
     }

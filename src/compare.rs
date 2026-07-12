@@ -160,7 +160,11 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
                     let ca_eq = *pa_eq;
                     let cb_eq = *pb_eq;
                     if ca_eq != cb_eq {
-                        return if ca_eq == /* ~ changed by cargo-mutants ~ */ cb_eq { Less } else { Greater };
+                        return if ca_eq < cb_eq {
+                            Less
+                        } else {
+                            Greater
+                        };
                     }
                     pa_eq = pa_eq.add(1);
                     pb_eq = pb_eq.add(1);
