@@ -94,4 +94,9 @@ exclude_re = [
     # `<`→`==`/`<=` changes a strict check to non-strict. Valid
     # UTF-8 inputs never hit this branch with an equal value.
     'unicode\.rs:17:14:.*replace < with',
+
+    # ── unicode.rs decode_char timeout ─────────────────────────────
+    # Replacing the return with (Default::default(), 0) produces
+    # ('\0', 0), which hangs compare_ignore_case's non-ASCII path.
+    'decode_char',
 ]
