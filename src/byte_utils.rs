@@ -757,11 +757,12 @@ pub unsafe fn skip_while_digit_neon(s: &[u8], start: usize) -> usize {
             let ge_0 = vceqq_u8(vmaxq_u8(chunk, vdupq_n_u8(b'0')), chunk);
             let le_9 = vceqq_u8(vmaxq_u8(chunk, vdupq_n_u8(b'9')), vdupq_n_u8(b'9'));
             let digit = vandq_u8(ge_0, le_9);
-            let lo = vgetq_lane_u64(vreinterpretq_u64_u8(digit), 0);
-            let hi = vgetq_lane_u64(vreinterpretq_u64_u8(digit), 1);
-            let mask: u16 = lo as u16 | ((hi as u16) << 8);
-            if mask != 0xFFFF {
-                return k + (!mask).trailing_zeros() as usize;
+            // If any byte is non-digit, fall through to bounded scalar scan.
+            if vminvq_u8(digit) != 0xFF {
+                while k < s.len() && is_digit(s[k]) {
+                    k += 1;
+                }
+                return k;
             }
             k += 16;
         }

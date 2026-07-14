@@ -13,3 +13,4 @@ cc f038b981779918deed3601a4573daa05e52e07b0afeb0a3ae68886adb4e912ad # shrinks to
 cc 82897a62903bf9568342c4a04f2de811613fde50398b1ff99d5af43e55e03e52 # shrinks to a = "1A00a0 Aa0A 0aA ", b = "10AaAA  a0  A 0A"
 cc 56bf11532b97e809090df5767efd56db426e20fabdc9eb6763d6b8545155e5be # shrinks to a = "100", b = "101"
 cc 8735ac6f525b0eca03df1d065194552b638907ef669493c1e2663f1b1fd85935 # shrinks to a = "1", b = "2"
+cc 7560cbf9353d35309b2a9ec82460f0bdd1da6bc0462b871b769cfbb93dedef69 # shrinks to a = "1aaaaaaaaaaaaaaa", b = "2" (NEON mask-bug regression)
