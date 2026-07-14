@@ -2,6 +2,7 @@
 
 #![cfg(test)]
 #![cfg(not(miri))]
+#![cfg(not(target_arch = "wasm32"))]
 
 use core::cmp::Ordering;
 use fast_natord::{compare, compare_ignore_case, compare_iter, compare_normalized};

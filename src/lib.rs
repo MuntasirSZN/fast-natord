@@ -77,12 +77,11 @@
 //! # Panic-free
 //!
 //! All public functions are guaranteed not to panic for any input.
-//! The normaliser returns `Cow::Owned` only when a transformation is
+//! The normalizer returns `Cow::Owned` only when a transformation is
 //! actually applied; it never panics on allocation failure.
 
 #![no_std]
 #![warn(missing_docs)]
-#![warn(rustdoc::missing_doc_code_examples)]
 #![warn(clippy::missing_errors_doc)]
 #![warn(clippy::missing_panics_doc)]
 #![warn(clippy::missing_safety_doc)]
@@ -145,6 +144,11 @@ pub use normalizer::{CaseMode, Normalization, Normalizer, compare_normalized};
 
 #[cfg(test)]
 mod tests {
+    // On wasm32, `#[test]` invokes wasm_bindgen_test so the same
+    // tests run under `wasm-pack test --node`.
+    #[cfg(target_arch = "wasm32")]
+    use wasm_bindgen_test::wasm_bindgen_test as test;
+
     #[cfg(feature = "normalize")]
     use super::Normalizer;
     use super::compare;

@@ -1,6 +1,6 @@
 # justfile for changelogen-rs development
 
-tools := "cargo-nextest cargo-deny cargo-llvm-cov cargo-watch cargo-hack kani-verifier cargo-mutants"
+tools := "cargo-nextest cargo-deny cargo-llvm-cov cargo-watch cargo-hack kani-verifier cargo-mutants wasm-pack"
 
 # Commands
 
@@ -97,7 +97,6 @@ pre-commit: fmt lint test deny
 deny:
     cargo deny check
 
-
 # Install development tools using cargo-binstall
 install-tools:
     @echo "{{ BLUE + BOLD }}Installing development tools...{{ NORMAL }}"
@@ -140,6 +139,18 @@ coverage-clean:
 # Publish to crates.io (uses CARGO_REGISTRY_TOKEN env)
 publish:
     cargo publish
+
+# Check compilation for web WASM target (both with and without simd128)
+wasm-check:
+    rustup target add wasm32-unknown-unknown
+    cargo hack check --locked --optional-deps --each-feature --target wasm32-unknown-unknown
+    RUSTFLAGS="-Ctarget-feature=+simd128" cargo hack check --locked --optional-deps --each-feature --target wasm32-unknown-unknown
+
+# Run tests on wasm32-unknown-unknown via wasm-pack in Node.js
+wasm-test:
+    rustup target add wasm32-unknown-unknown
+    wasm-pack test --node --all-features
+    RUSTFLAGS="-Ctarget-feature=+simd128" wasm-pack test --node --all-features
 
 # Run all CI checks (format, lint per-feature, build, test, docs, audit)
 ci-check: fmt-check lint-features build test docs-ci deny

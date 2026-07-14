@@ -15,88 +15,88 @@
 # Removing these lets mutation testing focus on real
 # behavioural defects.
 exclude_re = [
-    # ── byte_utils.rs dispatch threshold ──────────────────────────
-    # Changing `s.len() < 16` to `==`/`>`/`<=` only selects a
-    # different SIMD path; both paths give identical results.
-    'byte_utils\.rs:32:16:.*replace < with',
+  # ── byte_utils.rs dispatch threshold ──────────────────────────
+  # Changing `s.len() < 16` to `==`/`>`/`<=` only selects a
+  # different SIMD path; both paths give identical results.
+  'byte_utils\.rs:32:16:.*replace < with',
 
-    # ── Kani proof functions ─────────────────────────────────────
-    # Verified by `cargo kani`, not by `cargo test`.  Mutations
-    # survive because the standard test suite never exercises them.
-    'kani_proofs',
+  # ── Kani proof functions ─────────────────────────────────────
+  # Verified by `cargo kani`, not by `cargo test`.  Mutations
+  # survive because the standard test suite never exercises them.
+  "kani_proofs",
 
-    # ── compare.rs guarded expressions ────────────────────────────
-    # Line 81: `va < vb` guarded by `va != vb` on line 80.
-    'compare\.rs:81:.*replace < with <=',
+  # ── compare.rs guarded expressions ────────────────────────────
+  # Line 81: `va < vb` guarded by `va != vb` on line 80.
+  'compare\.rs:81:.*replace < with <=',
 
-    # Lines 94, 97: post-break scan bound — `>` never matches.
-    'compare\.rs:94:.*replace < with >',
-    'compare\.rs:97:.*replace < with >',
+  # Lines 94, 97: post-break scan bound — `>` never matches.
+  'compare\.rs:94:.*replace < with >',
+  'compare\.rs:97:.*replace < with >',
 
-    # Line 145: word-at-a-time loop bound — `+`→`*` always
-    # produces a value > end_run, making the loop body dead.
-    'compare\.rs:145:.*replace \+ with \*',
+  # Line 145: word-at-a-time loop bound — `+`→`*` always
+  # produces a value > end_run, making the loop body dead.
+  'compare\.rs:145:.*replace \+ with \*',
 
-    # Lines 153, 163, 194: `pa_eq < end_run` / similar — `<`→`<=`
-    # runs one extra iteration when the count is already zero;
-    # OOB read can't be distinguished in safe tests.
-    'compare\.rs:153:.*replace < with <=',
-    'compare\.rs:163:.*replace < with <=',
-    'compare\.rs:194:.*replace < with <=',
+  # Lines 153, 163, 194: `pa_eq < end_run` / similar — `<`→`<=`
+  # runs one extra iteration when the count is already zero;
+  # OOB read can't be distinguished in safe tests.
+  'compare\.rs:153:.*replace < with <=',
+  'compare\.rs:163:.*replace < with <=',
+  'compare\.rs:194:.*replace < with <=',
 
-    # ── compare_ignore_case.rs guarded expressions ────────────────
-    # Line 74: `va < vb` guarded by `va != vb`.
-    'compare_ignore_case\.rs:74:.*replace < with <=',
+  # ── compare_ignore_case.rs guarded expressions ────────────────
+  # Line 74: `va < vb` guarded by `va != vb`.
+  'compare_ignore_case\.rs:74:.*replace < with <=',
 
-    # Lines 86, 89: post-break scan — `>` never matches.
-    'compare_ignore_case\.rs:86:.*replace < with >',
-    'compare_ignore_case\.rs:89:.*replace < with >',
+  # Lines 86, 89: post-break scan — `>` never matches.
+  'compare_ignore_case\.rs:86:.*replace < with >',
+  'compare_ignore_case\.rs:89:.*replace < with >',
 
-    # Line 136: word loop bound — `<=`→`>` and `+`→`-`/`*` are
-    # equivalent (the u64 loop condition flips but the tail
-    # fallback produces identical results).
-    'compare_ignore_case\.rs:136:44.*replace <= with >',
-    'compare_ignore_case\.rs:136:40.*replace \+ with -',
-    'compare_ignore_case\.rs:136:40.*replace \+ with \*',
+  # Line 136: word loop bound — `<=`→`>` and `+`→`-`/`*` are
+  # equivalent (the u64 loop condition flips but the tail
+  # fallback produces identical results).
+  'compare_ignore_case\.rs:136:44.*replace <= with >',
+  'compare_ignore_case\.rs:136:40.*replace \+ with -',
+  'compare_ignore_case\.rs:136:40.*replace \+ with \*',
 
-    # Lines 144, 149, 153: `<`→`<=` in tail comparisons — these
-    # are equivalent under the same reasoning as compare.rs:153.
-    'compare_ignore_case\.rs:144:.*replace < with <=',
-    'compare_ignore_case\.rs:149:.*replace < with <=',
-    'compare_ignore_case\.rs:153:.*replace < with <=',
+  # Lines 144, 149, 153: `<`→`<=` in tail comparisons — these
+  # are equivalent under the same reasoning as compare.rs:153.
+  'compare_ignore_case\.rs:144:.*replace < with <=',
+  'compare_ignore_case\.rs:149:.*replace < with <=',
+  'compare_ignore_case\.rs:153:.*replace < with <=',
 
-    # Line 171: post-comparison `&&`/`<` — equivalent guards.
-    'compare_ignore_case\.rs:171:28.*replace && with \|\|',
-    'compare_ignore_case\.rs:171:22.*replace < with <=',
-    'compare_ignore_case\.rs:171:34.*replace < with <=',
+  # Line 171: post-comparison `&&`/`<` — equivalent guards.
+  'compare_ignore_case\.rs:171:28.*replace && with \|\|',
+  'compare_ignore_case\.rs:171:22.*replace < with <=',
+  'compare_ignore_case\.rs:171:34.*replace < with <=',
 
-    # Line 176: tail `<`→`<=` equivalence.
-    'compare_ignore_case\.rs:176:.*replace < with <=',
+  # Line 176: tail `<`→`<=` equivalence.
+  'compare_ignore_case\.rs:176:.*replace < with <=',
 
-    # Line 182: `&&`→`||` equivalence.
-    'compare_ignore_case\.rs:182:.*replace && with \|\|',
+  # Line 182: `&&`→`||` equivalence.
+  'compare_ignore_case\.rs:182:.*replace && with \|\|',
 
-    # Lines 185-186: `-`→`+` in ka/kb — always gives wrong length,
-    # but the comparison never reaches this path with zero-length
-    # runs (equivalent via unreachable branch).
-    'compare_ignore_case\.rs:185:.*replace - with \+',
-    'compare_ignore_case\.rs:186:.*replace - with \+',
+  # Lines 185-186: `-`→`+` in ka/kb — always gives wrong length,
+  # but the comparison never reaches this path with zero-length
+  # runs (equivalent via unreachable branch).
+  'compare_ignore_case\.rs:185:.*replace - with \+',
+  'compare_ignore_case\.rs:186:.*replace - with \+',
 
-    # Line 200: tail `<`→`<=` equivalence.
-    'compare_ignore_case\.rs:200:.*replace < with <=',
+  # Line 200: tail `<`→`<=` equivalence.
+  'compare_ignore_case\.rs:200:.*replace < with <=',
 
-    # ── normalizer.rs dead code with --all-features ───────────────
-    # fold_unicode_fallback is behind `#[cfg(not(feature =
-    # "normalize"))]` so it is never compiled or exercised.
-    'fold_unicode_fallback',
+  # ── normalizer.rs dead code with --all-features ───────────────
+  # fold_unicode_fallback is behind `#[cfg(not(feature =
+  # "normalize"))]` so it is never compiled or exercised.
+  "fold_unicode_fallback",
 
-    # ── unicode.rs continuation-byte check ────────────────────────
-    # `<`→`==`/`<=` changes a strict check to non-strict. Valid
-    # UTF-8 inputs never hit this branch with an equal value.
-    'unicode\.rs:17:14:.*replace < with',
+  # ── unicode.rs continuation-byte check ────────────────────────
+  # `<`→`==`/`<=` changes a strict check to non-strict. Valid
+  # UTF-8 inputs never hit this branch with an equal value.
+  'unicode\.rs:17:14:.*replace < with',
 
-    # ── unicode.rs decode_char timeout ─────────────────────────────
-    # Replacing the return with (Default::default(), 0) produces
-    # ('\0', 0), which hangs compare_ignore_case's non-ASCII path.
-    'decode_char',
+  # ── unicode.rs decode_char timeout ─────────────────────────────
+  # Replacing the return with (Default::default(), 0) produces
+  # ('\0', 0), which hangs compare_ignore_case's non-ASCII path.
+  "decode_char",
 ]

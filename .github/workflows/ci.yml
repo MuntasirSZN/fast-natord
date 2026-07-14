@@ -146,6 +146,31 @@ jobs:
           bins: cargo-hack,just
       - name: Check
         run: just check-features
+  wasm:
+    name: WASM (wasm32-unknown-unknown, simd128=${{ matrix.simd }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        simd: [false, true]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Setup Rust
+        uses: moonrepo/setup-rust@abb2d32350334249b178c401e5ec5836e0cd88d3 # v1.3.0
+        with:
+          bins: just,wasm-pack
+      - name: Run tests
+        run: |
+          if [ '${{ matrix.simd }}' = 'true' ]; then
+            export RUSTFLAGS="-Ctarget-feature=+simd128"
+          fi
+          wasm-pack test --node --all-features
+
   docs:
     name: Documentation
     runs-on: ubuntu-latest

@@ -9,7 +9,7 @@ files.sort_by(|&a, &b| fast_natord::compare(a, b));
 assert_eq!(files, ["rfc1.txt", "rfc822.txt", "rfc2086.txt"]);
 ```
 
-## Quick start
+## Quick Start
 
 | Function / type | Description | Feature |
 |---|---|---|
@@ -19,9 +19,9 @@ assert_eq!(files, ["rfc1.txt", "rfc822.txt", "rfc2086.txt"]);
 | `Normalizer` | Configurable pre-normalization (NFC, case folding, etc.) | `normalize` |
 | `compare_normalized(a, b)` | NFC + case-fold convenience | `normalize` |
 
-## Configurable normalization
+## Configurable Normalization
 
-The [`Normalizer`] type pre-processes strings before comparison in a separate
+The [`Normalizer`] type preprocesses strings before comparison in a separate
 step, keeping the hot comparison loop free of per-character normalization
 overhead.
 
@@ -43,7 +43,7 @@ Normalization happens **once per string**, not once per character inside the
 comparison loop. On all-ASCII inputs the normalizer short-circuits via SIMD
 with zero allocation.
 
-### Feature flags
+### Feature Flags
 
 | Feature | Default | Description |
 |---|---|---|
@@ -62,16 +62,35 @@ The `normalize` feature additionally requires `alloc`.
 
 ## SIMD Optimized
 
-Uses CPU-specific optimizations via dynamic dispatch:
-- **x86_64**: SSE2, SSE4.1, SSE4.2, AVX2, GFNI (prefix skip in comparison)
-- **x86_64**: SSE2, AVX2 (ASCII detection in normalizer)
-- **AArch64**: NEON (prefix skip + ASCII detection)
-- Normalizer additionally delegates to `simd-normalizer`'s 64-byte single-pass
-  SIMD-guided architecture when the `normalize` feature is enabled.
+All core comparison paths use SIMD where available via dynamic dispatch and compile-time
+feature detection:
 
-## Panic-free
+| Operation | x86_64 | AArch64 | WASM32 |
+|---|---|---|---|
+| Prefix skip (`simd_skip_equal`) | SSE2, SSE4.1, SSE4.2, AVX2, **AVX-512BW** | NEON | simd128 |
+| ASCII detection (`simd_is_ascii`) | SSE2, SSE4.1, AVX2, **AVX-512BW** | NEON | simd128 |
+| Digit-run end scan (`simd_skip_while_digit`) | SSE2, AVX2, **AVX-512BW** | NEON | simd128 |
+
+WASM SIMD is enabled at compile time via `-Ctarget-feature=+simd128`. Without this flag,
+WASM32 targets use the portable scalar fallback. x86_64 dispatch is ordered by priority:
+AVX-512BW → AVX2 → SSE4.2 → SSE4.1 → SSE2; only features the CPU supports are used.
+
+The normalizer additionally delegates to `simd-normalizer`'s 64-byte single-pass
+SIMD-guided architecture when the `normalize` feature is enabled.
+
+## Panic-Free
 
 All public functions are guaranteed not to panic for any input.
+
+## Safety
+
+As this crate contains SIMD, it has a lot of unsafe. To ensure safety, we do:
+
+- Extensive unit and integration tests for correctness and panic-freedom.
+- Fuzz testing with `afl.rs`.
+- Prove code is correct via formal verification using Kani.
+- Use `miri` to check for undefined behavior.
+- Extensive property tests via `proptest`.
 
 ## `compare_iter`
 

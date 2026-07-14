@@ -91,12 +91,14 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
                         }
                     }
                     // Scan remaining digits on each side.
-                    while pa_run < enda && byte_utils::is_digit(*pa_run) {
-                        pa_run = pa_run.add(1);
-                    }
-                    while pb_run < endb && byte_utils::is_digit(*pb_run) {
-                        pb_run = pb_run.add(1);
-                    }
+                    let start_a = (pa_run as usize) - (a.as_ptr() as usize);
+                    let start_b = (pb_run as usize) - (b.as_ptr() as usize);
+                    pa_run = a
+                        .as_ptr()
+                        .add(byte_utils::simd_skip_while_digit(a, start_a));
+                    pb_run = b
+                        .as_ptr()
+                        .add(byte_utils::simd_skip_while_digit(b, start_b));
                 }
                 let ka = pa_run as usize - pa as usize;
                 let kb = pb_run as usize - pb as usize;
@@ -118,30 +120,39 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
             let pa_run;
             let pb_run;
             unsafe {
-                let mut par = pa;
-                while par < enda && byte_utils::is_digit(*par) {
-                    par = par.add(1);
-                }
-                let mut pbr = pb;
-                while pbr < endb && byte_utils::is_digit(*pbr) {
-                    pbr = pbr.add(1);
-                }
-                ka = par as usize - pa as usize;
-                kb = pbr as usize - pb as usize;
-                pa_run = par;
-                pb_run = pbr;
+                let start_a = (pa as usize) - (a.as_ptr() as usize);
+                let start_b = (pb as usize) - (b.as_ptr() as usize);
+                let end_a = byte_utils::simd_skip_while_digit(a, start_a);
+                let end_b = byte_utils::simd_skip_while_digit(b, start_b);
+                ka = end_a - start_a;
+                kb = end_b - start_b;
+                pa_run = a.as_ptr().add(end_a);
+                pb_run = b.as_ptr().add(end_b);
             }
 
             if ka != kb {
                 return ka.cmp(&kb);
             }
 
-            // Equal-length: u64 XOR + trailing_zeros (like optimized memcmp).
+            // Equal-length: u128 then u64 XOR + trailing_zeros.
             let end_run = pa_run;
             let mut pa_eq = pa;
             let mut pb_eq = pb;
 
             unsafe {
+                while (pa_eq as usize) + 16 <= (end_run as usize) {
+                    let wa = (pa_eq as *const u128).read_unaligned();
+                    let wb = (pb_eq as *const u128).read_unaligned();
+                    let diff = wa ^ wb;
+                    if diff != 0 {
+                        let byte_off = (diff.trailing_zeros() / 8) as usize;
+                        let ca_eq = *pa_eq.add(byte_off);
+                        let cb_eq = *pb_eq.add(byte_off);
+                        return if ca_eq < cb_eq { Less } else { Greater };
+                    }
+                    pa_eq = pa_eq.add(16);
+                    pb_eq = pb_eq.add(16);
+                }
                 while (pa_eq as usize) + 8 <= (end_run as usize) {
                     let wa = (pa_eq as *const u64).read_unaligned();
                     let wb = (pb_eq as *const u64).read_unaligned();

@@ -362,6 +362,9 @@ static NORMALIZER_NFC_FOLD: Normalizer = Normalizer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // On wasm32 `#[test]` delegates to wasm_bindgen_test.
+    #[cfg(target_arch = "wasm32")]
+    use wasm_bindgen_test::wasm_bindgen_test as test;
 
     #[test]
     fn test_noop_normalizer() {

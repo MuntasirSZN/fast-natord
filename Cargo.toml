@@ -15,12 +15,22 @@ harness = false
 name = "natord"
 
 [dependencies]
-cpufeatures = "0.3.0"
 simd-normalizer = { version = "0.1", default-features = false, features = ["alloc"], optional = true }
 
-[dev-dependencies]
-divan = { version = "5", package = "codspeed-divan-compat" }
+[target.'cfg(any(target_arch = "aarch64", target_arch = "x86_64"))'.dependencies]
+cpufeatures = "0.3.0"
+
+# IDE in windows won't work, CI fails with path too long, workaround
+# until a solution is found.
+[target."cfg(kani_ra)".dependencies]
+kani = { git = "https://github.com/model-checking/kani" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+divan = { package = "codspeed-divan-compat", version = "5" }
 proptest = "1"
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"
 
 [features]
 default = []
@@ -28,8 +38,3 @@ normalize = ["dep:simd-normalizer"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
-
-# IDE in windows won't work, CI fails with path too long, woraround
-# until a solution is found.
-[target.'cfg(kani_ra)'.dependencies]
-kani = { git = "https://github.com/model-checking/kani" }

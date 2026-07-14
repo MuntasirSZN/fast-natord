@@ -28,6 +28,9 @@ pub fn decode_char(s: &[u8]) -> (char, usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // On wasm32 `#[test]` delegates to wasm_bindgen_test.
+    #[cfg(target_arch = "wasm32")]
+    use wasm_bindgen_test::wasm_bindgen_test as test;
 
     #[test]
     fn test_utf8_char_len_ascii() {
