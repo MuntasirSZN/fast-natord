@@ -23,6 +23,15 @@ miri:
     rustup component add --toolchain=nightly miri
     rustup run nightly -- cargo miri nextest run --all-features
 
+# Build AFL fuzz targets
+fuzz-build:
+    cd fuzz && cargo afl build
+
+# Run an AFL fuzz target (pass TARGET=name and optionally NCPU=cores)
+# TARGET: compare, compare_ignore_case, compare_normalized
+fuzz TARGET="compare":
+    cd fuzz && cargo afl fuzz -i inputs -o outputs -M fuzzer{{ TARGET }} -t 5000 -V 86400 target/debug/{{ TARGET }}
+
 # Format code with rustfmt
 fmt:
     {{ format }}

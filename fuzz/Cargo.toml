@@ -1,0 +1,21 @@
+[package]
+name = "fast-natord-fuzz"
+version = "0.0.1"
+edition = "2024"
+publish = false
+
+[dependencies]
+fast-natord = { path = "..", features = ["normalize"] }
+afl = "0.18"
+
+[[bin]]
+name = "compare"
+path = "fuzz_targets/compare.rs"
+
+[[bin]]
+name = "compare_ignore_case"
+path = "fuzz_targets/compare_ignore_case.rs"
+
+[[bin]]
+name = "compare_normalized"
+path = "fuzz_targets/compare_normalized.rs"

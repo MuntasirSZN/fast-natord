@@ -86,6 +86,33 @@ behavior:
 just miri
 ```
 
+### Fuzzing
+
+[AFL.rs](https://github.com/rust-fuzz/afl.rs) fuzz targets live in
+[`fuzz/`](./fuzz/). Three targets are provided:
+
+| Target | Exercises |
+|---|---|
+| `compare` | Case-sensitive `compare()` |
+| `compare_ignore_case` | Case-insensitive `compare_ignore_case()` |
+| `compare_normalized` | `Normalizer` (all normalization/case configs) and `compare_normalized()` |
+
+Build all fuzz targets:
+
+```sh
+just fuzz-build
+```
+
+Run a target (with one core, default):
+
+```sh
+just fuzz compare
+just fuzz compare_ignore_case
+just fuzz compare_normalized
+```
+
+Output lives under `fuzz/outputs/`.
+
 ### Formal verification
 
 [Kani](https://model-checking.github.io/kani/) proofs live alongside the
