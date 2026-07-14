@@ -76,7 +76,7 @@ exclude_re = [
   # Lines 134, 147: word loop bounds — `+`→`-`/`*` and `<=`→`>`
   # flip the loop condition but the tail fallback produces
   # identical results.
-  'compare_ignore_case\.rs:134:44.*replace <= with >',
+  'compare_ignore_case\.rs:134:45.*replace <= with >',
   'compare_ignore_case\.rs:134:40.*replace \+ with -',
   'compare_ignore_case\.rs:134:40.*replace \+ with \*',
   'compare_ignore_case\.rs:147:44.*replace <= with >',
@@ -100,8 +100,11 @@ exclude_re = [
   'compare_ignore_case\.rs:164:.*replace < with <=',
 
   # Line 182: `ca < 128 && cb < 128` ASCII guard — `<`→`<=` is
-  # equivalent because valid ASCII is 0-127.
+  # equivalent because valid ASCII is 0-127, and `&&`→`||` enters
+  # the ASCII-lowercasing path for mixed byte ranges, producing
+  # the same ordering as the single-ASCII fallback at line 211.
   'compare_ignore_case\.rs:182:22.*replace < with <=',
+  'compare_ignore_case\.rs:182:28.*replace && with \|\|',
   'compare_ignore_case\.rs:182:34.*replace < with <=',
 
   # Line 187: `lca < lcb` guarded by `lca != lcb`.
