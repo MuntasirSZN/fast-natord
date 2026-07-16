@@ -38,7 +38,17 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Create Release
-        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          generate_release_notes: true
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          registry-url: https://registry.npmjs.org/
+          node-version: lts/*
+
+      - run: npx changelogithub
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
