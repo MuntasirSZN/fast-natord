@@ -249,7 +249,7 @@ dependencies = [
 
 [[package]]
 name = "fast-natord"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "codspeed-divan-compat",
  "cpufeatures",
