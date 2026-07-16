@@ -14,7 +14,7 @@ assert_eq!(files, ["rfc1.txt", "rfc822.txt", "rfc2086.txt"]);
 ## Quick Start
 
 | Function / type | Description | Feature |
-|---|---|---|
+| --- | --- | --- |
 | `compare(a, b)` | Case-sensitive natural order | — |
 | `compare_ignore_case(a, b)` | Case-insensitive (ASCII fast; non-ASCII via `char::to_lowercase`) | — |
 | `compare_iter(a, b, skip, cmp, to_digit)` | Fully customizable iterator-based comparison | — |
@@ -58,7 +58,7 @@ allocation regardless of the configured normalization form.
 ### Feature Flags
 
 | Feature | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `normalize` | off | Enables NFC, NFD, NFKC, NFKD normalization and SIMD-accelerated case folding via [`simd-normalizer`](https://crates.io/crates/simd-normalizer) (Unicode 17). |
 
 Without `normalize`:
@@ -78,7 +78,7 @@ All core comparison paths use SIMD where available via dynamic dispatch and comp
 feature detection:
 
 | Operation | x86_64 | AArch64 | WASM32 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Prefix skip (`simd_skip_equal`) | SSE2, SSE4.1, SSE4.2, AVX2, **AVX-512BW** | NEON | simd128 |
 | ASCII detection (`simd_is_ascii`) | SSE2, SSE4.1, AVX2, **AVX-512BW** | NEON | simd128 |
 | Digit-run end scan (`simd_skip_while_digit`) | SSE2, AVX2, **AVX-512BW** | NEON | simd128 |
