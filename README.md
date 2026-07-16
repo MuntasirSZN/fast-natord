@@ -1,3 +1,5 @@
+<!-- cargo-rdme start -->
+
 # `fast-natord`
 
 Natural ordering for Rust — compares strings with awareness of numeric
@@ -21,7 +23,7 @@ assert_eq!(files, ["rfc1.txt", "rfc822.txt", "rfc2086.txt"]);
 
 ## Configurable Normalization
 
-The [`Normalizer`] type preprocesses strings before comparison in a separate
+The [`Normalizer`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/struct.Normalizer.html) type preprocesses strings before comparison in a separate
 step, keeping the hot comparison loop free of per-character normalization
 overhead.
 
@@ -33,15 +35,25 @@ let norm = Normalizer::new()
     .normalization(Normalization::Nfc)
     .case(CaseMode::Fold);
 
-// Canonically equivalent strings compare equal
-assert_eq!(norm.compare("\u{00E9}", "e\u{0301}"), std::cmp::Ordering::Equal);
+// Case-insensitive natural ordering
 assert_eq!(norm.compare("ABC", "abc"), std::cmp::Ordering::Equal);
 assert_eq!(norm.compare("pic10", "pic2"), std::cmp::Ordering::Greater);
+
+// With the `normalize` feature, canonically equivalent strings
+// like `é` (U+00E9) and `e\u{0301}` compare equal under NFC.
 ```
 
 Normalization happens **once per string**, not once per character inside the
-comparison loop. On all-ASCII inputs the normalizer short-circuits via SIMD
-with zero allocation.
+comparison loop:
+
+1. [`Normalizer::normalize`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/struct.Normalizer.html#method.normalize) applies the configured Unicode normalization
+   and/or case folding, returning a `Cow<str>` (borrowed when no
+   transformation is needed).
+2. [`Normalizer::compare`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/struct.Normalizer.html#method.compare) normalizes both inputs, then delegates to the
+   same SIMD-accelerated case-sensitive comparator used by [`compare`].
+
+On all-ASCII inputs the normalizer short-circuits via SIMD with zero
+allocation regardless of the configured normalization form.
 
 ### Feature Flags
 
@@ -50,9 +62,9 @@ with zero allocation.
 | `normalize` | off | Enables NFC, NFD, NFKC, NFKD normalization and SIMD-accelerated case folding via [`simd-normalizer`](https://crates.io/crates/simd-normalizer) (Unicode 17). |
 
 Without `normalize`:
-- `Normalization::Nfc` / `Nfd` / `Nfkc` / `Nfkd` silently behave as `None`.
-- `CaseMode::Fold` falls back to `char::to_lowercase()` (no SIMD).
-- `CaseMode::AsciiOnly` and `CaseMode::Sensitive` are unaffected.
+* `Normalization::Nfc` / `Nfd` / `Nfkc` / `Nfkd` silently behave as `None`.
+* `CaseMode::Fold` falls back to `char::to_lowercase()` (no SIMD).
+* `CaseMode::AsciiOnly` and `CaseMode::Sensitive` are unaffected.
 
 ## `no_std`
 
@@ -81,6 +93,8 @@ SIMD-guided architecture when the `normalize` feature is enabled.
 ## Panic-Free
 
 All public functions are guaranteed not to panic for any input.
+The normalizer returns `Cow::Owned` only when a transformation is
+actually applied; it never panics on allocation failure.
 
 ## Safety
 
@@ -125,3 +139,5 @@ Unicode normalization, and `#![no_std]` support.
 ## License
 
 MIT — see [LICENSE](./LICENSE).
+
+<!-- cargo-rdme end -->

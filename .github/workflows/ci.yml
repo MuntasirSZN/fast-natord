@@ -29,6 +29,24 @@ jobs:
           echo "version=$MSRV" >> "$GITHUB_OUTPUT"
           echo "Found MSRV: $MSRV"
 
+  rdme:
+    name: cargo-rdme check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Setup Rust
+        uses: moonrepo/setup-rust@abb2d32350334249b178c401e5ec5836e0cd88d3 # v1.3.0
+        with:
+          bins: cargo-rdme
+      - run: |
+          cargo rdme install-rust-toolchain-for-intralinks
+          cargo rdme --check
+
   fmt:
     name: Format
     runs-on: ubuntu-latest

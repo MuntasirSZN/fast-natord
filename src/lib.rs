@@ -9,76 +9,134 @@
 //! assert_eq!(files, ["rfc1.txt", "rfc822.txt", "rfc2086.txt"]);
 //! ```
 //!
-//! # Quick start
+//! ## Quick Start
 //!
-//! | Use case | Function / type | Feature needed |
-//! |---|---|---|
-//! | Case-sensitive natural sort | [`compare`] | — |
-//! | Case-insensitive natural sort | [`compare_ignore_case`] | — |
-//! | Custom char-by-char comparison | [`compare_iter`] | — |
-//! | NFC + case-insensitive sort | [`compare_normalized`] | `normalize` |
-//! | Configurable normalizer | [`Normalizer`] | `normalize` for NFC/NFD/NFKC/NFKD |
+//! | Function / type | Description | Feature |
+//! |—|—|—|
+//! | `compare(a, b)` | Case-sensitive natural order | — |
+//! | `compare_ignore_case(a, b)` | Case-insensitive (ASCII fast; non-ASCII via `char::to_lowercase`) | — |
+//! | `compare_iter(a, b, skip, cmp, to_digit)` | Fully customizable iterator-based comparison | — |
+//! | `Normalizer` | Configurable pre-normalization (NFC, case folding, etc.) | `normalize` |
+//! | `compare_normalized(a, b)` | NFC + case-fold convenience | `normalize` |
 //!
-//! # Configurable normalisation
+//! ## Configurable Normalization
 //!
-//! The [`Normalizer`] type pre-processes strings before comparison in a
-//! separate step, keeping the hot comparison loop free of per-character
-//! normalisation overhead.
+//! The [`Normalizer`] type preprocesses strings before comparison in a separate
+//! step, keeping the hot comparison loop free of per-character normalization
+//! overhead.
 //!
-//! ```rust
+//! ```
 //! use fast_natord::{Normalizer, Normalization, CaseMode};
 //!
-//! // NFC normalisation + case folding — canonically equivalent strings
-//! // compare as equal regardless of composition or casing.
+//! // NFC normalization + case folding
 //! let norm = Normalizer::new()
 //!     .normalization(Normalization::Nfc)
 //!     .case(CaseMode::Fold);
 //!
-//! assert_eq!(norm.compare("ABC", "abc"), core::cmp::Ordering::Equal);
-//! assert_eq!(norm.compare("pic10", "pic2"), core::cmp::Ordering::Greater);
+//! // Case-insensitive natural ordering
+//! assert_eq!(norm.compare("ABC", "abc"), std::cmp::Ordering::Equal);
+//! assert_eq!(norm.compare("pic10", "pic2"), std::cmp::Ordering::Greater);
 //!
 //! // With the `normalize` feature, canonically equivalent strings
 //! // like `é` (U+00E9) and `e\u{0301}` compare equal under NFC.
 //! ```
 //!
-//! ## How it works
+//! Normalization happens **once per string**, not once per character inside the
+//! comparison loop:
 //!
-//! Normalisation happens **once per string**, not once per character
-//! inside the comparison loop:
+//! 1. [`Normalizer::normalize`] applies the configured Unicode normalization
+//!    and/or case folding, returning a `Cow<str>` (borrowed when no
+//!    transformation is needed).
+//! 2. [`Normalizer::compare`] normalizes both inputs, then delegates to the
+//!    same SIMD-accelerated case-sensitive comparator used by [`compare`].
 //!
-//! 1. [`Normalizer::normalize`] applies the configured Unicode
-//!    normalisation and/or case folding, returning a `Cow<str>`
-//!    (borrowed when no transformation is needed).
-//! 2. [`Normalizer::compare`] normalises both inputs, then delegates
-//!    to the same SIMD-accelerated case-sensitive comparator used by
-//!    [`compare`].
+//! On all-ASCII inputs the normalizer short-circuits via SIMD with zero
+//! allocation regardless of the configured normalization form.
 //!
-//! On all-ASCII inputs the normalizer short-circuits via SIMD and
-//! produces zero allocations regardless of the configured normalisation
-//! form.
-//!
-//! # Feature flags
+//! ### Feature Flags
 //!
 //! | Feature | Default | Description |
-//! |---|---|---|
-//! | `normalize` | off | Enables NFC, NFD, NFKC, NFKD normalisation and SIMD-accelerated case folding via the [simd-normalizer](https://crates.io/crates/simd-normalizer) crate (supports Unicode 17). |
+//! |—|—|—|
+//! | `normalize` | off | Enables NFC, NFD, NFKC, NFKD normalization and SIMD-accelerated case folding via [`simd-normalizer`](https://crates.io/crates/simd-normalizer) (Unicode 17). |
 //!
 //! Without `normalize`:
 //! * `Normalization::Nfc` / `Nfd` / `Nfkc` / `Nfkd` silently behave as `None`.
-//! * `CaseMode::Fold` falls back to [`char::to_lowercase()`] (no SIMD).
+//! * `CaseMode::Fold` falls back to `char::to_lowercase()` (no SIMD).
 //! * `CaseMode::AsciiOnly` and `CaseMode::Sensitive` are unaffected.
 //!
-//! # `no_std`
+//! ## `no_std`
 //!
-//! This crate is `#![no_std]` by default.  The core API uses
-//! [`core::cmp::Ordering`] and `&str` / `&[u8]` arguments.
+//! `fast-natord` is `#![no_std]` by default. The core API uses
+//! `core::cmp::Ordering` and `&str` / `&[u8]` arguments.
 //! The `normalize` feature additionally requires `alloc`.
 //!
-//! # Panic-free
+//! ## SIMD Optimized
+//!
+//! All core comparison paths use SIMD where available via dynamic dispatch and compile-time
+//! feature detection:
+//!
+//! | Operation | x86_64 | AArch64 | WASM32 |
+//! |—|—|—|—|
+//! | Prefix skip (`simd_skip_equal`) | SSE2, SSE4.1, SSE4.2, AVX2, **AVX-512BW** | NEON | simd128 |
+//! | ASCII detection (`simd_is_ascii`) | SSE2, SSE4.1, AVX2, **AVX-512BW** | NEON | simd128 |
+//! | Digit-run end scan (`simd_skip_while_digit`) | SSE2, AVX2, **AVX-512BW** | NEON | simd128 |
+//!
+//! WASM SIMD is enabled at compile time via `-Ctarget-feature=+simd128`. Without this flag,
+//! WASM32 targets use the portable scalar fallback. x86_64 dispatch is ordered by priority:
+//! AVX-512BW → AVX2 → SSE4.2 → SSE4.1 → SSE2; only features the CPU supports are used.
+//!
+//! The normalizer additionally delegates to `simd-normalizer`'s 64-byte single-pass
+//! SIMD-guided architecture when the `normalize` feature is enabled.
+//!
+//! ## Panic-Free
 //!
 //! All public functions are guaranteed not to panic for any input.
 //! The normalizer returns `Cow::Owned` only when a transformation is
 //! actually applied; it never panics on allocation failure.
+//!
+//! ## Safety
+//!
+//! As this crate contains SIMD, it has a lot of unsafe. To ensure safety, we do:
+//!
+//! - Extensive unit and integration tests for correctness and panic-freedom.
+//! - Fuzz testing with `afl.rs`.
+//! - Prove code is correct via formal verification using Kani.
+//! - Use `miri` to check for undefined behavior.
+//! - Extensive property tests via `proptest`.
+//!
+//! ## `compare_iter`
+//!
+//! For fully custom natural ordering (different digit bases, whitespace rules, etc.),
+//! use `compare_iter`:
+//!
+//! ```
+//! use fast_natord::compare_iter;
+//! use std::cmp::Ordering;
+//!
+//! let result = compare_iter(
+//!     "pic10".chars(),
+//!     "pic2".chars(),
+//!     |c| c.is_whitespace(),
+//!     |a, b| a.cmp(b),
+//!     |c| c.to_digit(10).map(|v| v as isize),
+//! );
+//! assert_eq!(result, Ordering::Greater);
+//! ```
+//!
+//! ## MSRV
+//!
+//! Rust 1.91.0 edition 2024.
+//!
+//! ## Origin
+//!
+//! Hard-forked from the [`natord`](https://crates.io/crates/natord) crate (MIT License).
+//! Complete rewrite with word-at-a-time prefix scanning, length-based digit
+//! comparison, branchless digit detection, SIMD prefix skipping, configurable
+//! Unicode normalization, and `#![no_std]` support.
+//!
+//! ## License
+//!
+//! MIT — see [LICENSE](./LICENSE).
 
 #![no_std]
 #![warn(missing_docs)]
