@@ -42,13 +42,15 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-
-      - name: Set node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - name: Generate release notes
+        uses: orhun/git-cliff-action@v4
         with:
-          registry-url: https://registry.npmjs.org/
-          node-version: lts/*
-
-      - run: npx changelogithub
+          config: cliff.toml
+          args: --verbose --latest
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OUTPUT: release.md
+          GITHUB_REPO: ${{ github.repository }}
+      - name: Create Release
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
+        with:
+          body_path: release.md
