@@ -1,0 +1,12 @@
+[default]
+extend-ignore-identifiers-re = [
+    "^ba$",    # variable: bytes-a or "ba" test string
+    "^clen$",  # variable: char length
+]
+
+[default.extend-words]
+# "caf" and "Caf" are part of the French word "café" in test data
+caf = "caf"
+Caf = "Caf"
+# "abd" is a test string alongside "ABC" for ordering checks
+abd = "abd"
