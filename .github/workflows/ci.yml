@@ -167,6 +167,7 @@ jobs:
   wasm:
     name: WASM (wasm32-unknown-unknown, simd128=${{ matrix.simd }})
     runs-on: ubuntu-latest
+    needs: msrv
     permissions:
       contents: read
     strategy:
