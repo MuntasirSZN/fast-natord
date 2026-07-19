@@ -90,6 +90,9 @@ exclude_re = [
   # ── compare_ignore_case_impl: `&&` → `||` in ASCII guard ────
   'replace && with \|\| in compare_ignore_case_impl\b',
 
+  # ── compare_ignore_case_impl: `||` → `&&` in loop guard (timeout) ─
+  'replace \|\| with && in compare_ignore_case_impl\b',
+
   # ── compare_ignore_case_impl: `>` → `>=` in digit-continuation ─
   'replace > with >= in compare_ignore_case_impl\b',
 
