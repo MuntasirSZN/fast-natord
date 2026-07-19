@@ -55,10 +55,8 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
                         let mut pa_run = pa;
                         let mut pb_run = pb;
                         loop {
-                            let da =
-                                pa_run < enda && byte_utils::is_digit(*pa_run);
-                            let db =
-                                pb_run < endb && byte_utils::is_digit(*pb_run);
+                            let da = pa_run < enda && byte_utils::is_digit(*pa_run);
+                            let db = pb_run < endb && byte_utils::is_digit(*pb_run);
                             if da && db {
                                 let va = *pa_run;
                                 let vb = *pb_run;
@@ -152,10 +150,8 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
                     let mut pa_run = pa;
                     let mut pb_run = pb;
                     loop {
-                        let da =
-                            pa_run < enda && byte_utils::is_digit(*pa_run);
-                        let db =
-                            pb_run < endb && byte_utils::is_digit(*pb_run);
+                        let da = pa_run < enda && byte_utils::is_digit(*pa_run);
+                        let db = pb_run < endb && byte_utils::is_digit(*pb_run);
                         if da && db {
                             pa_run = pa_run.add(1);
                             pb_run = pb_run.add(1);
