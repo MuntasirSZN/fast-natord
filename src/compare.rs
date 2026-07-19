@@ -141,17 +141,51 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
             // word-at-a-time compare.
             let ka;
             let kb;
-            let pa_run;
-            let pb_run;
+            let pa_after;
+            let pb_after;
             unsafe {
-                let start_a = (pa as usize) - (a.as_ptr() as usize);
-                let start_b = (pb as usize) - (b.as_ptr() as usize);
-                let end_a = byte_utils::simd_skip_while_digit(a, start_a);
-                let end_b = byte_utils::simd_skip_while_digit(b, start_b);
-                ka = end_a - start_a;
-                kb = end_b - start_b;
-                pa_run = a.as_ptr().add(end_a);
-                pb_run = b.as_ptr().add(end_b);
+                // Short remaining strings: simultaneous scan avoids
+                // the double-scan of separate simd_skip_while_digit calls.
+                if (enda as usize).wrapping_sub(pa as usize) < 16
+                    && (endb as usize).wrapping_sub(pb as usize) < 16
+                {
+                    let mut pa_run = pa;
+                    let mut pb_run = pb;
+                    loop {
+                        let da =
+                            pa_run < enda && byte_utils::is_digit(*pa_run);
+                        let db =
+                            pb_run < endb && byte_utils::is_digit(*pb_run);
+                        if da && db {
+                            pa_run = pa_run.add(1);
+                            pb_run = pb_run.add(1);
+                        } else if da {
+                            // A has more digits → numerically larger.
+                            return Greater;
+                        } else if db {
+                            // B has more digits → numerically larger.
+                            return Less;
+                        } else {
+                            break;
+                        }
+                    }
+                    // Equal-length runs: word-at-a-time compare.
+                    // pa_run / pb_run point past both runs.
+                    ka = pa_run as usize - pa as usize;
+                    kb = pb_run as usize - pb as usize;
+                    pa_after = pa_run;
+                    pb_after = pb_run;
+                } else {
+                    // Long runs: SIMD end-finding + word-at-a-time compare.
+                    let start_a = (pa as usize) - (a.as_ptr() as usize);
+                    let start_b = (pb as usize) - (b.as_ptr() as usize);
+                    let end_a = byte_utils::simd_skip_while_digit(a, start_a);
+                    let end_b = byte_utils::simd_skip_while_digit(b, start_b);
+                    ka = end_a - start_a;
+                    kb = end_b - start_b;
+                    pa_after = a.as_ptr().add(end_a);
+                    pb_after = b.as_ptr().add(end_b);
+                }
             }
 
             if ka != kb {
@@ -159,7 +193,7 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
             }
 
             // Equal-length: u128 then u64 XOR + trailing_zeros.
-            let end_run = pa_run;
+            let end_run = pa_after;
             let mut pa_eq = pa;
             let mut pb_eq = pb;
 
@@ -202,8 +236,8 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
                 }
             }
 
-            pa = pa_run;
-            pb = pb_run;
+            pa = pa_after;
+            pb = pb_after;
             continue;
         }
 
