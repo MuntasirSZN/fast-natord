@@ -2,6 +2,23 @@ use crate::byte_utils;
 use core::cmp::Ordering;
 use core::cmp::Ordering::{Equal, Greater, Less};
 
+/// Cold helper: skip whitespace on both sides. Kept out of the hot loop
+/// to improve instruction-cache and branch-predictor locality.
+#[cold]
+unsafe fn skip_whitespace(
+    pa: &mut *const u8,
+    pb: &mut *const u8,
+    enda: *const u8,
+    endb: *const u8,
+) {
+    while *pa < enda && byte_utils::is_ascii_ws(**pa) {
+        *pa = pa.add(1);
+    }
+    while *pb < endb && byte_utils::is_ascii_ws(**pb) {
+        *pb = pb.add(1);
+    }
+}
+
 /// Case-sensitive natural order compare on byte slices.
 ///
 /// Uses SIMD to skip common prefix, then a pointer-based scalar
@@ -25,21 +42,6 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
     let endb = unsafe { b.as_ptr().add(len_b) };
 
     loop {
-        // Cold path: one or both current bytes are whitespace.
-        // Hottest case (no whitespace in typical filenames) falls through.
-        unsafe {
-            if (pa < enda && byte_utils::is_ascii_ws(*pa))
-                || (pb < endb && byte_utils::is_ascii_ws(*pb))
-            {
-                while pa < enda && byte_utils::is_ascii_ws(*pa) {
-                    pa = pa.add(1);
-                }
-                while pb < endb && byte_utils::is_ascii_ws(*pb) {
-                    pb = pb.add(1);
-                }
-            }
-        }
-
         if pa >= enda || pb >= endb {
             let rem_a = (enda as usize).wrapping_sub(pa as usize);
             let rem_b = (endb as usize).wrapping_sub(pb as usize);
@@ -189,11 +191,16 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
         }
 
         // At most one side is a digit (or neither).  Digit bytes are always
-        // below non-digit/non-ws bytes, so a plain byte compare preserves
-        // natural order (numbers before text) — except when the last
-        // aligned matching byte was a digit: the digit run may continue on
-        // one side but not the other, so the longer run wins.
+        // below non-digit bytes, so a plain byte compare preserves natural
+        // order (numbers before text) — except when the last aligned
+        // matching byte was a digit: the digit run may continue on one side
+        // but not the other, so the longer run wins.
         if ca != cb {
+            // Whitespace takes precedence — skip it before comparing.
+            if unsafe { byte_utils::is_ascii_ws(ca) || byte_utils::is_ascii_ws(cb) } {
+                unsafe { skip_whitespace(&mut pa, &mut pb, enda, endb) };
+                continue;
+            }
             // When one side is a digit and the other isn't, and the byte
             // immediately before this position was also a digit, the digit
             // run continues on one side — the longer run wins.
@@ -209,6 +216,13 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
             }
             return if ca < cb { Less } else { Greater };
         }
+
+        // Cold: whitespace skip (rare in filenames).
+        if unsafe { byte_utils::is_ascii_ws(*pa) } {
+            unsafe { skip_whitespace(&mut pa, &mut pb, enda, endb) };
+            continue;
+        }
+
         unsafe {
             pa = pa.add(1);
             pb = pb.add(1);
