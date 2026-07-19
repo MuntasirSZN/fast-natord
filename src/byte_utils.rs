@@ -601,7 +601,7 @@ pub unsafe fn simd_skip_equal(a: &[u8], b: &[u8], i: usize, common_len: usize) -
 ///
 /// `start <= s.len()`. Caller must ensure `s` is valid for reads up to
 /// `s.len()`.
-#[inline]
+#[inline(always)]
 pub unsafe fn simd_skip_while_digit(s: &[u8], start: usize) -> usize {
     unsafe {
         // Short inputs: byte-by-byte is faster than SIMD dispatch.
