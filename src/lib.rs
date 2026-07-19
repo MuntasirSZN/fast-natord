@@ -13,9 +13,9 @@
 //!
 //! | Function / type | Description | Feature |
 //! | --- | --- | --- |
-//! | [`compare`] | Case-sensitive natural order | — |
-//! | [`compare_ignore_case`] | Case-insensitive (ASCII fast; non-ASCII via `char::to_lowercase()`) | — |
-//! | [`compare_iter`] | Fully customizable iterator-based comparison | — |
+//! | [`compare`][compare] | Case-sensitive natural order | — |
+//! | [`compare_ignore_case`][compare_ignore_case] | Case-insensitive (ASCII fast; non-ASCII via `char::to_lowercase()`) | — |
+//! | [`compare_iter`][compare_iter] | Fully customizable iterator-based comparison | — |
 //! | [`Normalizer`] | Configurable pre-normalization (NFC, case folding, etc.) | `normalize` |
 //! | [`compare_normalized`] | NFC + case-fold convenience | `normalize` |
 //!
@@ -48,7 +48,7 @@
 //!    and/or case folding, returning a [`alloc::borrow::Cow<str>`] (borrowed when no
 //!    transformation is needed).
 //! 2. [`Normalizer::compare`] normalizes both inputs, then delegates to the
-//!    same SIMD-accelerated case-sensitive comparator used by [`compare`].
+//!    same SIMD-accelerated case-sensitive comparator used by [`compare`][compare].
 //!
 //! On all-ASCII inputs the normalizer short-circuits via SIMD with zero
 //! allocation regardless of the configured normalization form.
@@ -57,10 +57,10 @@
 //!
 //! | Feature | Default | Description |
 //! | --- | --- | --- |
-//! | `normalize` | off | Enables NFC, NFD, NFKC, NFKD normalization and SIMD-accelerated case folding via [`simd-normalizer`](https://crates.io/crates/simd-normalizer) (Unicode 17). |
+//! | `normalize` | off | Enables NFC, NFD, NFKC, NFKD normalization and SIMD-accelerated case folding via [`simd-normalizer`][simd_normalizer] (Unicode 17). |
 //!
 //! Without `normalize`:
-//! * [`Normalization::Nfc`] / [`Normalization::Nfd`] / [`Normalization::Nfkc`] / [`Normalization::Nfkd`] silently behave as [`None`].
+//! * [`Normalization::Nfc`] / [`Normalization::Nfd`] / [`Normalization::Nfkc`] / [`Normalization::Nfkd`] silently behave as [`None`][core::option::Option::None].
 //! * [`CaseMode::Fold`] falls back to `char::to_lowercase()` (no SIMD).
 //! * [`CaseMode::AsciiOnly`] and [`CaseMode::Sensitive`] are unaffected.
 //!
@@ -85,13 +85,13 @@
 //! WASM32 targets use the portable scalar fallback. x86_64 dispatch is ordered by priority:
 //! AVX-512BW → AVX2 → SSE4.2 → SSE4.1 → SSE2; only features the CPU supports are used.
 //!
-//! The normalizer additionally delegates to `simd-normalizer`'s 64-byte single-pass
+//! The normalizer additionally delegates to [`simd-normalizer`][simd_normalizer]'s 64-byte single-pass
 //! SIMD-guided architecture when the `normalize` feature is enabled.
 //!
 //! ## Panic-Free
 //!
 //! All public functions are guaranteed not to panic for any input.
-//! The normalizer returns [`alloc::borrow::Cow::Owned`] only when a transformation is
+//! The normalizer returns [`alloc::borrow::Cow::Owned`][alloc::borrow::Cow::Owned] only when a transformation is
 //! actually applied; it never panics on allocation failure.
 //!
 //! ## Safety
@@ -104,10 +104,10 @@
 //! - Use [Miri](https://github.com/rust-lang/miri) to check for undefined behavior.
 //! - Extensive property tests via [`proptest`](https://crates.io/crates/proptest).
 //!
-//! ## [`compare_iter`]
+//! ## [`compare_iter`][compare_iter]
 //!
 //! For fully custom natural ordering (different digit bases, whitespace rules, etc.),
-//! use [`compare_iter`]:
+//! use [`compare_iter`][compare_iter]:
 //!
 //! ```
 //! use fast_natord::compare_iter;
@@ -137,12 +137,18 @@
 //! ## License
 //!
 //! MIT — see [LICENSE](./LICENSE).
+//!
+//! [simd_normalizer]: https://crates.io/crates/simd-normalizer
+//! [compare]: https://docs.rs/fast-natord/latest/fast_natord/fn.compare.html
+//! [compare_ignore_case]: https://docs.rs/fast-natord/latest/fast_natord/fn.compare_ignore_case.html
+//! [compare_iter]: https://docs.rs/fast-natord/latest/fast_natord/fn.compare_iter.html
 
 #![no_std]
 #![warn(missing_docs)]
 #![warn(clippy::missing_errors_doc)]
 #![warn(clippy::missing_panics_doc)]
 #![warn(clippy::missing_safety_doc)]
+#![allow(rustdoc::redundant_explicit_links)]
 
 extern crate alloc;
 
