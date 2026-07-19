@@ -297,3 +297,21 @@ proptest! {
         prop_assert_eq!(result, Ordering::Equal, "a={:?}", a);
     }
 }
+
+// ── Regression tests ────────────────────────────────────────────────
+
+#[test]
+fn regr_normalized_matches_ignore_case_ascii_digit_continuation() {
+    // Found on macOS: compare_ignore_case was missing the digit-run
+    // continuation check, causing disagreement with compare_normalized
+    // when one side's digit run extended past the other's.
+    let a = "2:AaaA 00\0Aa0aaA";
+    let b = "20   aAaAaa AA \0";
+    let expected = compare_ignore_case(a, b);
+    let actual = compare_normalized(a, b);
+    assert_eq!(
+        actual, expected,
+        "a={:?} b={:?} compare_ignore_case={:?} compare_normalized={:?}",
+        a, b, expected, actual
+    );
+}

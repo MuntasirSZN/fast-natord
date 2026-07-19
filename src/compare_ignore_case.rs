@@ -174,6 +174,16 @@ pub fn compare_ignore_case_impl(a: &[u8], b: &[u8]) -> Ordering {
             // Differing due to whitespace on at least one side.
             unsafe { byte_utils::skip_whitespace(&mut pa, &mut pb, enda, endb) };
             continue;
+        } else if byte_utils::is_digit(ca) != byte_utils::is_digit(cb)
+            && pa > a.as_ptr()
+            && unsafe { byte_utils::is_digit(*pa.sub(1)) }
+        {
+            // Digit-run continuation: the longer run wins.
+            return if byte_utils::is_digit(ca) {
+                Greater
+            } else {
+                Less
+            };
         } else if ca < 128 && cb < 128 {
             // Both ASCII — lowercasing is cheap.
             let lca = ca.to_ascii_lowercase();

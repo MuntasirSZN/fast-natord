@@ -12,118 +12,86 @@
 #    would be entered with zero remaining work; the tail
 #    fallback handles everything identically.
 #
+# Patterns match on mutation operation + function name (after
+# "in "), NOT line numbers, so they survive cargo fmt.
+#
 # Removing these lets mutation testing focus on real
 # behavioural defects.
 exclude_re = [
   # ── byte_utils.rs dispatch threshold ──────────────────────────
   # Changing `s.len() < 16` to `==`/`>`/`<=` only selects a
   # different SIMD path; both paths give identical results.
-  'byte_utils\.rs:32:16:.*replace < with',
+  "replace < with.*in simd_is_ascii",
 
   # ── Kani proof functions ─────────────────────────────────────
   # Verified by `cargo kani`, not by `cargo test`.  Mutations
   # survive because the standard test suite never exercises them.
   "kani_proofs",
 
-  # ── compare.rs guarded expressions ────────────────────────────
-  # Line 75-76: `pa_run/pb_run < enda/endb` after left-aligned break
-  # means these are always false — `>` never matches.
-  'compare\.rs:75:.*replace < with >',
-  'compare\.rs:76:.*replace < with >',
+  # ── compare_impl: guarded comparisons ─────────────────────────
+  # All `<` → `<=`/`==`/`>` guarded by preceding `!=` or
+  # `diff != 0` check, making them equivalent.
+  'replace < with <= in compare_impl\b',
+  'replace < with == in compare_impl\b',
+  'replace < with > in compare_impl\b',
 
-  # Line 81: `va < vb` guarded by `va != vb` on line 80.
-  'compare\.rs:81:.*replace < with <=',
+  # ── compare_impl: word-at-a-time loop bounds ─────────────────
+  # `+`→`*` produces a value > common_end/end_run, making the
+  # loop body dead; `+`→`-` underflows → UB.
+  'replace \+ with \* in compare_impl\b',
+  'replace \+ with - in compare_impl\b',
 
-  # Lines 143, 156: word-at-a-time loop bound — `+`→`*` always
-  # produces a value > end_run, making the loop body dead.
-  'compare\.rs:143:40.*replace \+ with \*',
-  'compare\.rs:156:40.*replace \+ with \*',
+  # ── compare_impl: pointer subtraction → huge/negative values ─
+  'replace - with \+ in compare_impl\b',
 
-  # Lines 146, 159: `wa ^ wb` — XOR to find differing word.
-  # `|`/`&` also produce non-zero for differing words, but the
-  # trailing-zero bit position differs; equivalent because the
-  # `if diff != 0` guard fires identically.
-  'compare\.rs:146:35.*replace \^ with \|',
-  'compare\.rs:146:35.*replace \^ with &',
-  'compare\.rs:159:35.*replace \^ with \|',
-  'compare\.rs:159:35.*replace \^ with &',
+  # ── compare_impl: XOR → OR/AND — guarded by `diff != 0` ─────
+  'replace \^ with \| in compare_impl\b',
+  'replace \^ with & in compare_impl\b',
 
-  # Lines 151, 164: `ca_eq < cb_eq` guarded by `diff != 0` on
-  # the preceding line — `<`→`<=` is equivalent.
-  'compare\.rs:151:.*replace < with <=',
-  'compare\.rs:164:.*replace < with <=',
+  # ── compare_impl: `!=` → `==` — flips condition ─────────────
+  'replace != with == in compare_impl\b',
 
-  # Line 170: tail loop `pa_eq < end_run` — `<`→`<=` runs one
-  # extra iteration when count is already zero; OOB read can't
-  # be distinguished in safe tests.
-  'compare\.rs:170:.*replace < with <=',
+  # ── compare_impl: trailing_zeros / 8 → wrong byte offset ────
+  'replace / with % in compare_impl\b',
+  'replace / with \* in compare_impl\b',
 
-  # Line 174: tail `ca_eq < cb_eq` guarded by `ca_eq != cb_eq`.
-  'compare\.rs:174:.*replace < with <=',
+  # ── compare_impl: `&&` → `||` in short-remaining guards ─────
+  'replace && with \|\| in compare_impl\b',
 
-  # Line 205: `ca < cb` guarded by `ca != cb` on line 194/201.
-  'compare\.rs:205:.*replace < with <=',
+  # ── compare_impl: `<=` → `>` in word-at-a-time loop bounds ──
+  'replace <= with > in compare_impl\b',
 
-  # ── compare_ignore_case.rs guarded expressions ────────────────
-  # Lines 68-69: `pa_run/pb_run < enda/endb` after left-aligned
-  # break — `>` never matches.
-  'compare_ignore_case\.rs:68:.*replace < with >',
-  'compare_ignore_case\.rs:69:.*replace < with >',
+  # ── compare_impl: `pa > a.as_ptr()` digit-continuation guard ─
+  'replace > with >= in compare_impl\b',
 
-  # Line 74: `va < vb` guarded by `va != vb`.
-  'compare_ignore_case\.rs:74:.*replace < with <=',
+  # ── compare_ignore_case_impl: guarded comparisons ────────────
+  # Same reasoning as compare_impl — all `<` guarded by `!=`.
+  'replace < with <= in compare_ignore_case_impl\b',
+  'replace < with == in compare_ignore_case_impl\b',
+  'replace < with > in compare_ignore_case_impl\b',
 
-  # Lines 134, 147: word loop bounds — `+`→`-`/`*` and `<=`→`>`
-  # flip the loop condition but the tail fallback produces
-  # identical results.
-  'compare_ignore_case\.rs:134:45.*replace <= with >',
-  'compare_ignore_case\.rs:134:40.*replace \+ with -',
-  'compare_ignore_case\.rs:134:40.*replace \+ with \*',
-  'compare_ignore_case\.rs:147:44.*replace <= with >',
-  'compare_ignore_case\.rs:147:40.*replace \+ with -',
-  'compare_ignore_case\.rs:147:40.*replace \+ with \*',
+  # ── compare_ignore_case_impl: word-at-a-time loop bound ─────
+  'replace \+ with \* in compare_ignore_case_impl\b',
+  'replace \+ with - in compare_ignore_case_impl\b',
+  'replace <= with > in compare_ignore_case_impl\b',
+  'replace - with \+ in compare_ignore_case_impl\b',
 
-  # Lines 137, 150: `wa ^ wb` XOR — same reasoning as compare.rs.
-  'compare_ignore_case\.rs:137:35.*replace \^ with \|',
-  'compare_ignore_case\.rs:137:35.*replace \^ with &',
-  'compare_ignore_case\.rs:150:35.*replace \^ with \|',
-  'compare_ignore_case\.rs:150:35.*replace \^ with &',
+  # ── compare_ignore_case_impl: XOR → OR/AND ──────────────────
+  'replace \^ with \| in compare_ignore_case_impl\b',
+  'replace \^ with & in compare_ignore_case_impl\b',
 
-  # Lines 142, 155: `ca_eq < cb_eq` guarded by `diff != 0`.
-  'compare_ignore_case\.rs:142:.*replace < with <=',
-  'compare_ignore_case\.rs:155:.*replace < with <=',
+  # ── compare_ignore_case_impl: `!=` → `==` ───────────────────
+  'replace != with == in compare_ignore_case_impl\b',
 
-  # Line 160: tail loop `pa_eq < end_run`.
-  'compare_ignore_case\.rs:160:.*replace < with <=',
+  # ── compare_ignore_case_impl: trailing_zeros / 8 ────────────
+  'replace / with % in compare_ignore_case_impl\b',
+  'replace / with \* in compare_ignore_case_impl\b',
 
-  # Line 164: tail `ca_eq < cb_eq` guarded by `ca_eq != cb_eq`.
-  'compare_ignore_case\.rs:164:.*replace < with <=',
+  # ── compare_ignore_case_impl: `&&` → `||` in ASCII guard ────
+  'replace && with \|\| in compare_ignore_case_impl\b',
 
-  # Line 182: `ca < 128 && cb < 128` ASCII guard — `<`→`<=` is
-  # equivalent because valid ASCII is 0-127, and `&&`→`||` enters
-  # the ASCII-lowercasing path for mixed byte ranges, producing
-  # the same ordering as the single-ASCII fallback at line 211.
-  'compare_ignore_case\.rs:182:22.*replace < with <=',
-  'compare_ignore_case\.rs:182:28.*replace && with \|\|',
-  'compare_ignore_case\.rs:182:34.*replace < with <=',
-
-  # Line 187: `lca < lcb` guarded by `lca != lcb`.
-  'compare_ignore_case\.rs:187:.*replace < with <=',
-
-  # Line 193: `ca >= 128 && cb >= 128` — changing `&&` to `||`
-  # enters the non-ASCII path for a mixed pair, producing the
-  # same ordering because the single-ASCII fallback at line 211
-  # also handles the comparison.
-  'compare_ignore_case\.rs:193:.*replace && with \|\|',
-
-  # Lines 196-197: `enda/endb - pa/pb as usize` — `-`→`+` gives
-  # a wrong length, but the comparison never reaches this path
-  # with zero-length runs.
-  'compare_ignore_case\.rs:196:.*replace - with \+',
-  'compare_ignore_case\.rs:197:.*replace - with \+',
-
-  # Line 211: `ca < cb` guarded by `ca != cb`.
-  'compare_ignore_case\.rs:211:.*replace < with <=',
+  # ── compare_ignore_case_impl: `>` → `>=` in digit-continuation ─
+  'replace > with >= in compare_ignore_case_impl\b',
 
   # ── normalizer.rs dead code with --all-features ───────────────
   # fold_unicode_fallback is behind `#[cfg(not(feature =
@@ -133,7 +101,11 @@ exclude_re = [
   # ── unicode.rs continuation-byte check ────────────────────────
   # `<`→`==`/`<=` changes a strict check to non-strict. Valid
   # UTF-8 inputs never hit this branch with an equal value.
-  'unicode\.rs:17:14:.*replace < with',
+  "utf8_char_len.*replace < with",
+
+  # ── normalizer.rs: delete Normalization::None arm (no-normalize) ──
+  # Without the `normalize` feature, the `_` arm handles everything.
+  "Normalization::None in Normalizer::apply_normalization",
 
   # ── unicode.rs decode_char timeout ─────────────────────────────
   # Replacing the return with (Default::default(), 0) produces
