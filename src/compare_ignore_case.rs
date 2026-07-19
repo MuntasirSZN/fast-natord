@@ -162,7 +162,7 @@ pub fn compare_ignore_case_impl(a: &[u8], b: &[u8]) -> Ordering {
         // Handle non-digits: check whitespace first, then case-fold.
         if ca == cb {
             // Matching bytes — check whitespace (cold path).
-            if unsafe { byte_utils::is_ascii_ws(ca) } {
+            if byte_utils::is_ascii_ws(ca) {
                 unsafe { byte_utils::skip_whitespace(&mut pa, &mut pb, enda, endb) };
                 continue;
             }
@@ -170,7 +170,7 @@ pub fn compare_ignore_case_impl(a: &[u8], b: &[u8]) -> Ordering {
                 pa = pa.add(1);
                 pb = pb.add(1);
             }
-        } else if unsafe { byte_utils::is_ascii_ws(ca) || byte_utils::is_ascii_ws(cb) } {
+        } else if byte_utils::is_ascii_ws(ca) || byte_utils::is_ascii_ws(cb) {
             // Differing due to whitespace on at least one side.
             unsafe { byte_utils::skip_whitespace(&mut pa, &mut pb, enda, endb) };
             continue;

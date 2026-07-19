@@ -180,7 +180,7 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
         // but not the other, so the longer run wins.
         if ca != cb {
             // Whitespace takes precedence — skip it before comparing.
-            if unsafe { byte_utils::is_ascii_ws(ca) || byte_utils::is_ascii_ws(cb) } {
+            if byte_utils::is_ascii_ws(ca) || byte_utils::is_ascii_ws(cb) {
                 unsafe { byte_utils::skip_whitespace(&mut pa, &mut pb, enda, endb) };
                 continue;
             }
