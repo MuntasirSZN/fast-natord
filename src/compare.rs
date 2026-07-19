@@ -18,13 +18,6 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
     let common_len = len_a.min(len_b);
     let adv = unsafe { byte_utils::simd_skip_equal(a, b, 0, common_len) };
 
-    // Tracks whether the last consumed aligned-and-equal byte was a digit.
-    // When the first differing bytes have mixed digit/non-digit types this
-    // tells us the digit run continues on one side but ended on the other.
-    // Initialised from the SIMD-skipped prefix and updated as the loop
-    // processes matching bytes.
-    let mut last_eq_digit = adv > 0 && byte_utils::is_digit(a[adv - 1]);
-
     // SAFETY: adv ≤ common_len ≤ both lengths.
     let mut pa = unsafe { a.as_ptr().add(adv) };
     let mut pb = unsafe { b.as_ptr().add(adv) };
@@ -66,50 +59,62 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
             let lb0 = cb == b'0';
 
             if la0 || lb0 {
-                // Left-aligned: compare char-by-char up to the shorter run,
-                // then the shorter run wins.
-                let mut pa_run = pa;
-                let mut pb_run = pb;
+                // Left-aligned: find run ends, use word-at-a-time
+                // compare up to the shorter run.
                 unsafe {
-                    loop {
-                        let da2 = pa_run < enda && byte_utils::is_digit(*pa_run);
-                        let db2 = pb_run < endb && byte_utils::is_digit(*pb_run);
-                        if da2 && db2 {
-                            let va = *pa_run;
-                            let vb = *pb_run;
-                            if va != vb {
-                                return if va < vb { Less } else { Greater };
-                            }
-                            pa_run = pa_run.add(1);
-                            pb_run = pb_run.add(1);
-                        } else if da2 {
-                            return Greater;
-                        } else if db2 {
-                            return Less;
-                        } else {
-                            break;
+                    let start_a = (pa as usize) - (a.as_ptr() as usize);
+                    let start_b = (pb as usize) - (b.as_ptr() as usize);
+                    let end_a = byte_utils::simd_skip_while_digit(a, start_a);
+                    let end_b = byte_utils::simd_skip_while_digit(b, start_b);
+                    let ka = end_a - start_a;
+                    let kb = end_b - start_b;
+                    let min_len = if ka < kb { ka } else { kb };
+                    let common_end = a.as_ptr().add(start_a + min_len);
+
+                    let mut pa_eq = pa;
+                    let mut pb_eq = pb;
+                    while (pa_eq as usize) + 16 <= (common_end as usize) {
+                        let wa = (pa_eq as *const u128).read_unaligned();
+                        let wb = (pb_eq as *const u128).read_unaligned();
+                        let diff = wa ^ wb;
+                        if diff != 0 {
+                            let byte_off = (diff.trailing_zeros() / 8) as usize;
+                            let ca_eq = *pa_eq.add(byte_off);
+                            let cb_eq = *pb_eq.add(byte_off);
+                            return if ca_eq < cb_eq { Less } else { Greater };
                         }
+                        pa_eq = pa_eq.add(16);
+                        pb_eq = pb_eq.add(16);
                     }
-                    // Scan remaining digits on each side.
-                    let start_a = (pa_run as usize) - (a.as_ptr() as usize);
-                    let start_b = (pb_run as usize) - (b.as_ptr() as usize);
-                    pa_run = a
-                        .as_ptr()
-                        .add(byte_utils::simd_skip_while_digit(a, start_a));
-                    pb_run = b
-                        .as_ptr()
-                        .add(byte_utils::simd_skip_while_digit(b, start_b));
+                    while (pa_eq as usize) + 8 <= (common_end as usize) {
+                        let wa = (pa_eq as *const u64).read_unaligned();
+                        let wb = (pb_eq as *const u64).read_unaligned();
+                        let diff = wa ^ wb;
+                        if diff != 0 {
+                            let byte_off = (diff.trailing_zeros() / 8) as usize;
+                            let ca_eq = *pa_eq.add(byte_off);
+                            let cb_eq = *pb_eq.add(byte_off);
+                            return if ca_eq < cb_eq { Less } else { Greater };
+                        }
+                        pa_eq = pa_eq.add(8);
+                        pb_eq = pb_eq.add(8);
+                    }
+                    while pa_eq < common_end {
+                        let va = *pa_eq;
+                        let vb = *pb_eq;
+                        if va != vb {
+                            return if va < vb { Less } else { Greater };
+                        }
+                        pa_eq = pa_eq.add(1);
+                        pb_eq = pb_eq.add(1);
+                    }
+
+                    if ka != kb {
+                        return ka.cmp(&kb);
+                    }
+                    pa = a.as_ptr().add(end_a);
+                    pb = b.as_ptr().add(end_b);
                 }
-                let ka = pa_run as usize - pa as usize;
-                let kb = pb_run as usize - pb as usize;
-                if ka != kb {
-                    return ka.cmp(&kb);
-                }
-                // Equal-length left-aligned runs that matched: continue
-                // the main loop to compare post-run characters.
-                pa = pa_run;
-                pb = pb_run;
-                last_eq_digit = true;
                 continue;
             }
 
@@ -180,9 +185,6 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
 
             pa = pa_run;
             pb = pb_run;
-            // The equal-length digit runs were digits — remember for later
-            // mixed-type checks.
-            last_eq_digit = true;
             continue;
         }
 
@@ -192,10 +194,13 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
         // aligned matching byte was a digit: the digit run may continue on
         // one side but not the other, so the longer run wins.
         if ca != cb {
-            if last_eq_digit && byte_utils::is_digit(ca) != byte_utils::is_digit(cb) {
-                // Last aligned bytes were a matching digit run; one side's
-                // digit run continues while the other's has ended → longer
-                // run wins.
+            // When one side is a digit and the other isn't, and the byte
+            // immediately before this position was also a digit, the digit
+            // run continues on one side — the longer run wins.
+            if byte_utils::is_digit(ca) != byte_utils::is_digit(cb)
+                && pa > a.as_ptr()
+                && unsafe { byte_utils::is_digit(*pa.sub(1)) }
+            {
                 return if byte_utils::is_digit(ca) {
                     Greater
                 } else {
@@ -205,8 +210,6 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
             return if ca < cb { Less } else { Greater };
         }
         unsafe {
-            // Matching non-digit bytes: clear the digit-run flag.
-            last_eq_digit = false;
             pa = pa.add(1);
             pb = pb.add(1);
         }
