@@ -565,7 +565,7 @@ pub unsafe fn simd_skip_equal(a: &[u8], b: &[u8], i: usize, common_len: usize) -
 // ── SIMD digit-run end scanning ─────────────────────────────────
 
 /// Scans `s` from `start` looking for the first non-digit byte.
-/// Returns the index of the first byte where `!is_digit(b)`.
+/// Returns the index of the first byte where [`!is_digit(b)`](is_digit).
 /// Uses SIMD on x86_64 (SSE2+), AArch64 (NEON), and WASM (simd128).
 /// Falls back to scalar on other architectures or for short runs (<16B).
 ///

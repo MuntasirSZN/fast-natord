@@ -27,11 +27,11 @@
 //! NKFD normalization and SIMD-accelerated case folding via
 //! `simd-normalizer`.  Without it:
 //!
-//! * `Normalization::Nfc` / `Nfd` / `Nfkc` / `Nfkd` silently behave as
-//!   `None`.
-//! * `CaseMode::Fold` falls back to [`char::to_lowercase()`] (no SIMD
+//! * [`Normalization::Nfc`] / [`Nfd`](Normalization::Nfd) / [`Nfkc`](Normalization::Nfkc) / [`Nfkd`](Normalization::Nfkd) silently behave as
+//!   [`None`](Normalization::None).
+//! * [`CaseMode::Fold`] falls back to [`char::to_lowercase()`] (no SIMD
 //!   acceleration).
-//! * `CaseMode::AsciiOnly` and `CaseMode::Sensitive` are unaffected.
+//! * [`CaseMode::AsciiOnly`] and [`CaseMode::Sensitive`] are unaffected.
 
 use alloc::borrow::Cow;
 use alloc::string::String;

@@ -15,11 +15,11 @@ assert_eq!(files, ["rfc1.txt", "rfc822.txt", "rfc2086.txt"]);
 
 | Function / type | Description | Feature |
 | --- | --- | --- |
-| `compare(a, b)` | Case-sensitive natural order | — |
-| `compare_ignore_case(a, b)` | Case-insensitive (ASCII fast; non-ASCII via `char::to_lowercase`) | — |
-| `compare_iter(a, b, skip, cmp, to_digit)` | Fully customizable iterator-based comparison | — |
-| `Normalizer` | Configurable pre-normalization (NFC, case folding, etc.) | `normalize` |
-| `compare_normalized(a, b)` | NFC + case-fold convenience | `normalize` |
+| [`compare`] | Case-sensitive natural order | — |
+| [`compare_ignore_case`] | Case-insensitive (ASCII fast; non-ASCII via `char::to_lowercase()`) | — |
+| [`compare_iter`] | Fully customizable iterator-based comparison | — |
+| [`Normalizer`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/struct.Normalizer.html) | Configurable pre-normalization (NFC, case folding, etc.) | `normalize` |
+| [`compare_normalized`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/fn.compare_normalized.html) | NFC + case-fold convenience | `normalize` |
 
 ## Configurable Normalization
 
@@ -47,7 +47,7 @@ Normalization happens **once per string**, not once per character inside the
 comparison loop:
 
 1. [`Normalizer::normalize`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/struct.Normalizer.html#method.normalize) applies the configured Unicode normalization
-   and/or case folding, returning a `Cow<str>` (borrowed when no
+   and/or case folding, returning a [`alloc::borrow::Cow<str>`](https://doc.rust-lang.org/stable/alloc/borrow/enum.Cow.html) (borrowed when no
    transformation is needed).
 2. [`Normalizer::compare`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/struct.Normalizer.html#method.compare) normalizes both inputs, then delegates to the
    same SIMD-accelerated case-sensitive comparator used by [`compare`].
@@ -62,15 +62,15 @@ allocation regardless of the configured normalization form.
 | `normalize` | off | Enables NFC, NFD, NFKC, NFKD normalization and SIMD-accelerated case folding via [`simd-normalizer`](https://crates.io/crates/simd-normalizer) (Unicode 17). |
 
 Without `normalize`:
-* `Normalization::Nfc` / `Nfd` / `Nfkc` / `Nfkd` silently behave as `None`.
-* `CaseMode::Fold` falls back to `char::to_lowercase()` (no SIMD).
-* `CaseMode::AsciiOnly` and `CaseMode::Sensitive` are unaffected.
+* [`Normalization::Nfc`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enum.Normalization.html#variant.Nfc) / [`Normalization::Nfd`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enum.Normalization.html#variant.Nfd) / [`Normalization::Nfkc`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enum.Normalization.html#variant.Nfkc) / [`Normalization::Nfkd`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enum.Normalization.html#variant.Nfkd) silently behave as [`None`].
+* [`CaseMode::Fold`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enum.CaseMode.html#variant.Fold) falls back to `char::to_lowercase()` (no SIMD).
+* [`CaseMode::AsciiOnly`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enum.CaseMode.html#variant.AsciiOnly) and [`CaseMode::Sensitive`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enum.CaseMode.html#variant.Sensitive) are unaffected.
 
 ## `no_std`
 
 `fast-natord` is `#![no_std]` by default. The core API uses
-`core::cmp::Ordering` and `&str` / `&[u8]` arguments.
-The `normalize` feature additionally requires `alloc`.
+[`core::cmp::Ordering`](https://doc.rust-lang.org/stable/core/cmp/enum.Ordering.html) and `&str` / `&[u8]` arguments.
+The `normalize` feature additionally requires [`alloc`](https://doc.rust-lang.org/stable/alloc/).
 
 ## SIMD Optimized
 
@@ -93,7 +93,7 @@ SIMD-guided architecture when the `normalize` feature is enabled.
 ## Panic-Free
 
 All public functions are guaranteed not to panic for any input.
-The normalizer returns `Cow::Owned` only when a transformation is
+The normalizer returns [`alloc::borrow::Cow::Owned`] only when a transformation is
 actually applied; it never panics on allocation failure.
 
 ## Safety
@@ -101,15 +101,15 @@ actually applied; it never panics on allocation failure.
 As this crate contains SIMD, it has a lot of unsafe. To ensure safety, we do:
 
 - Extensive unit and integration tests for correctness and panic-freedom.
-- Fuzz testing with `afl.rs`.
-- Prove code is correct via formal verification using Kani.
-- Use `miri` to check for undefined behavior.
-- Extensive property tests via `proptest`.
+- Fuzz testing with [`afl.rs`](https://github.com/rust-fuzz/afl.rs).
+- Prove code is correct via formal verification using [Kani](https://github.com/model-checking/kani).
+- Use [Miri](https://github.com/rust-lang/miri) to check for undefined behavior.
+- Extensive property tests via [`proptest`](https://crates.io/crates/proptest).
 
-## `compare_iter`
+## [`compare_iter`]
 
 For fully custom natural ordering (different digit bases, whitespace rules, etc.),
-use `compare_iter`:
+use [`compare_iter`]:
 
 ```rust
 use fast_natord::compare_iter;
