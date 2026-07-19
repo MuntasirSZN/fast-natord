@@ -44,9 +44,43 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
             let lb0 = cb == b'0';
 
             if la0 || lb0 {
-                // Left-aligned: find run ends, use word-at-a-time
-                // compare up to the shorter run.
+                // Left-aligned (leading-zero): shorter run can win.
                 unsafe {
+                    // Short remaining strings: single-pass byte-by-byte
+                    // avoids the overhead of two simd_skip_while_digit calls
+                    // plus a second pass for word-at-a-time comparison.
+                    if (enda as usize).wrapping_sub(pa as usize) < 16
+                        && (endb as usize).wrapping_sub(pb as usize) < 16
+                    {
+                        let mut pa_run = pa;
+                        let mut pb_run = pb;
+                        loop {
+                            let da =
+                                pa_run < enda && byte_utils::is_digit(*pa_run);
+                            let db =
+                                pb_run < endb && byte_utils::is_digit(*pb_run);
+                            if da && db {
+                                let va = *pa_run;
+                                let vb = *pb_run;
+                                if va != vb {
+                                    return if va < vb { Less } else { Greater };
+                                }
+                                pa_run = pa_run.add(1);
+                                pb_run = pb_run.add(1);
+                            } else if da {
+                                return Greater;
+                            } else if db {
+                                return Less;
+                            } else {
+                                break;
+                            }
+                        }
+                        pa = pa_run;
+                        pb = pb_run;
+                        continue;
+                    }
+
+                    // Long runs: SIMD end-finding + word-at-a-time compare.
                     let start_a = (pa as usize) - (a.as_ptr() as usize);
                     let start_b = (pb as usize) - (b.as_ptr() as usize);
                     let end_a = byte_utils::simd_skip_while_digit(a, start_a);
