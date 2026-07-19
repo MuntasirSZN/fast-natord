@@ -485,6 +485,10 @@ cpufeatures::new!(cpuid_sse41, "sse4.1");
 #[inline(always)]
 pub unsafe fn simd_skip_equal(a: &[u8], b: &[u8], i: usize, common_len: usize) -> usize {
     unsafe {
+        // Short strings: skip SIMD dispatch overhead.
+        if common_len < 16 {
+            return finish_scalar(a, b, i, common_len);
+        }
         // Priority: AVX-512 > AVX2 > SSE4.2 > SSE4.1 > SSE2.
         if cpuid_avx512::get() {
             skip_avx512(a, b, i, common_len)
