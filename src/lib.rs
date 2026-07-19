@@ -60,13 +60,13 @@
 //! | `normalize` | off | Enables NFC, NFD, NFKC, NFKD normalization and SIMD-accelerated case folding via [`simd-normalizer`][simd_normalizer] (Unicode 17). |
 //!
 //! Without `normalize`:
-//! * [`Normalization::Nfc`] / [`Normalization::Nfd`] / [`Normalization::Nfkc`] / [`Normalization::Nfkd`] silently behave as [`None`][core::option::Option::None].
+//! * [`Normalization::Nfc`] / [`Normalization::Nfd`] / [`Normalization::Nfkc`] / [`Normalization::Nfkd`] silently behave as [`None`][None].
 //! * [`CaseMode::Fold`] falls back to `char::to_lowercase()` (no SIMD).
 //! * [`CaseMode::AsciiOnly`] and [`CaseMode::Sensitive`] are unaffected.
 //!
-//! ## `no_std`
+//! ## [`no_std`][no_std]
 //!
-//! `fast-natord` is `#![no_std]` by default. The core API uses
+//! `fast-natord` is [`#![no_std]`][no_std] by default. The core API uses
 //! [`core::cmp::Ordering`] and `&str` / `&[u8]` arguments.
 //! The `normalize` feature additionally requires [`alloc`].
 //!
@@ -91,7 +91,7 @@
 //! ## Panic-Free
 //!
 //! All public functions are guaranteed not to panic for any input.
-//! The normalizer returns [`alloc::borrow::Cow::Owned`][alloc::borrow::Cow::Owned] only when a transformation is
+//! The normalizer returns [`alloc::borrow::Cow::Owned`][CowOwned] only when a transformation is
 //! actually applied; it never panics on allocation failure.
 //!
 //! ## Safety
@@ -132,7 +132,7 @@
 //! Hard-forked from the [`natord`](https://crates.io/crates/natord) crate (MIT License).
 //! Complete rewrite with word-at-a-time prefix scanning, length-based digit
 //! comparison, branchless digit detection, SIMD prefix skipping, configurable
-//! Unicode normalization, and `#![no_std]` support.
+//! Unicode normalization, and [`#![no_std]`][no_std] support.
 //!
 //! ## License
 //!
@@ -142,6 +142,9 @@
 //! [compare]: https://docs.rs/fast-natord/latest/fast_natord/fn.compare.html
 //! [compare_ignore_case]: https://docs.rs/fast-natord/latest/fast_natord/fn.compare_ignore_case.html
 //! [compare_iter]: https://docs.rs/fast-natord/latest/fast_natord/fn.compare_iter.html
+//! [None]: https://doc.rust-lang.org/core/option/enum.Option.html#variant.None
+//! [CowOwned]: https://doc.rust-lang.org/alloc/borrow/enum.Cow.html#variant.Owned
+//! [no_std]: https://docs.rust-embedded.org/book/intro/no-std.html
 
 #![no_std]
 #![warn(missing_docs)]

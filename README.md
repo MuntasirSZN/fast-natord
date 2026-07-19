@@ -62,13 +62,13 @@ allocation regardless of the configured normalization form.
 | `normalize` | off | Enables NFC, NFD, NFKC, NFKD normalization and SIMD-accelerated case folding via [`simd-normalizer`][simd_normalizer] (Unicode 17). |
 
 Without `normalize`:
-* [`Normalization::Nfc`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enum.Normalization.html#variant.Nfc) / [`Normalization::Nfd`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enum.Normalization.html#variant.Nfd) / [`Normalization::Nfkc`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enum.Normalization.html#variant.Nfkc) / [`Normalization::Nfkd`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enum.Normalization.html#variant.Nfkd) silently behave as [`None`][core::option::Option::None].
+* [`Normalization::Nfc`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enum.Normalization.html#variant.Nfc) / [`Normalization::Nfd`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enum.Normalization.html#variant.Nfd) / [`Normalization::Nfkc`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enum.Normalization.html#variant.Nfkc) / [`Normalization::Nfkd`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enum.Normalization.html#variant.Nfkd) silently behave as [`None`][None].
 * [`CaseMode::Fold`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enum.CaseMode.html#variant.Fold) falls back to `char::to_lowercase()` (no SIMD).
 * [`CaseMode::AsciiOnly`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enum.CaseMode.html#variant.AsciiOnly) and [`CaseMode::Sensitive`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enum.CaseMode.html#variant.Sensitive) are unaffected.
 
-## `no_std`
+## [`no_std`][no_std]
 
-`fast-natord` is `#![no_std]` by default. The core API uses
+`fast-natord` is [`#![no_std]`][no_std] by default. The core API uses
 [`core::cmp::Ordering`](https://doc.rust-lang.org/stable/core/cmp/enum.Ordering.html) and `&str` / `&[u8]` arguments.
 The `normalize` feature additionally requires [`alloc`](https://doc.rust-lang.org/stable/alloc/).
 
@@ -93,7 +93,7 @@ SIMD-guided architecture when the `normalize` feature is enabled.
 ## Panic-Free
 
 All public functions are guaranteed not to panic for any input.
-The normalizer returns [`alloc::borrow::Cow::Owned`][alloc::borrow::Cow::Owned] only when a transformation is
+The normalizer returns [`alloc::borrow::Cow::Owned`][CowOwned] only when a transformation is
 actually applied; it never panics on allocation failure.
 
 ## Safety
@@ -134,7 +134,7 @@ Rust 1.91.0 edition 2024.
 Hard-forked from the [`natord`](https://crates.io/crates/natord) crate (MIT License).
 Complete rewrite with word-at-a-time prefix scanning, length-based digit
 comparison, branchless digit detection, SIMD prefix skipping, configurable
-Unicode normalization, and `#![no_std]` support.
+Unicode normalization, and [`#![no_std]`][no_std] support.
 
 ## License
 
@@ -144,5 +144,8 @@ MIT — see [LICENSE](./LICENSE).
 [compare]: https://docs.rs/fast-natord/latest/fast_natord/fn.compare.html
 [compare_ignore_case]: https://docs.rs/fast-natord/latest/fast_natord/fn.compare_ignore_case.html
 [compare_iter]: https://docs.rs/fast-natord/latest/fast_natord/fn.compare_iter.html
+[None]: https://doc.rust-lang.org/core/option/enum.Option.html#variant.None
+[CowOwned]: https://doc.rust-lang.org/alloc/borrow/enum.Cow.html#variant.Owned
+[no_std]: https://docs.rust-embedded.org/book/intro/no-std.html
 
 <!-- cargo-rdme end -->
