@@ -26,20 +26,6 @@ pub fn compare_ignore_case_impl(a: &[u8], b: &[u8]) -> Ordering {
     let endb = unsafe { b.as_ptr().add(len_b) };
 
     loop {
-        // Cold path: one or both current bytes are whitespace.
-        unsafe {
-            if (pa < enda && byte_utils::is_ascii_ws(*pa))
-                || (pb < endb && byte_utils::is_ascii_ws(*pb))
-            {
-                while pa < enda && byte_utils::is_ascii_ws(*pa) {
-                    pa = pa.add(1);
-                }
-                while pb < endb && byte_utils::is_ascii_ws(*pb) {
-                    pb = pb.add(1);
-                }
-            }
-        }
-
         if pa >= enda || pb >= endb {
             let rem_a = (enda as usize).wrapping_sub(pa as usize);
             let rem_b = (endb as usize).wrapping_sub(pb as usize);
@@ -173,12 +159,21 @@ pub fn compare_ignore_case_impl(a: &[u8], b: &[u8]) -> Ordering {
             continue;
         }
 
-        // Fast path: identical byte → case-fold is a no-op.
+        // Handle non-digits: check whitespace first, then case-fold.
         if ca == cb {
+            // Matching bytes — check whitespace (cold path).
+            if unsafe { byte_utils::is_ascii_ws(ca) } {
+                unsafe { byte_utils::skip_whitespace(&mut pa, &mut pb, enda, endb) };
+                continue;
+            }
             unsafe {
                 pa = pa.add(1);
                 pb = pb.add(1);
             }
+        } else if unsafe { byte_utils::is_ascii_ws(ca) || byte_utils::is_ascii_ws(cb) } {
+            // Differing due to whitespace on at least one side.
+            unsafe { byte_utils::skip_whitespace(&mut pa, &mut pb, enda, endb) };
+            continue;
         } else if ca < 128 && cb < 128 {
             // Both ASCII — lowercasing is cheap.
             let lca = ca.to_ascii_lowercase();

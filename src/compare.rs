@@ -2,23 +2,6 @@ use crate::byte_utils;
 use core::cmp::Ordering;
 use core::cmp::Ordering::{Equal, Greater, Less};
 
-/// Cold helper: skip whitespace on both sides. Kept out of the hot loop
-/// to improve instruction-cache and branch-predictor locality.
-#[cold]
-unsafe fn skip_whitespace(
-    pa: &mut *const u8,
-    pb: &mut *const u8,
-    enda: *const u8,
-    endb: *const u8,
-) {
-    while *pa < enda && byte_utils::is_ascii_ws(**pa) {
-        *pa = pa.add(1);
-    }
-    while *pb < endb && byte_utils::is_ascii_ws(**pb) {
-        *pb = pb.add(1);
-    }
-}
-
 /// Case-sensitive natural order compare on byte slices.
 ///
 /// Uses SIMD to skip common prefix, then a pointer-based scalar
@@ -198,7 +181,7 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
         if ca != cb {
             // Whitespace takes precedence — skip it before comparing.
             if unsafe { byte_utils::is_ascii_ws(ca) || byte_utils::is_ascii_ws(cb) } {
-                unsafe { skip_whitespace(&mut pa, &mut pb, enda, endb) };
+                unsafe { byte_utils::skip_whitespace(&mut pa, &mut pb, enda, endb) };
                 continue;
             }
             // When one side is a digit and the other isn't, and the byte
@@ -219,7 +202,7 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
 
         // Cold: whitespace skip (rare in filenames).
         if unsafe { byte_utils::is_ascii_ws(*pa) } {
-            unsafe { skip_whitespace(&mut pa, &mut pb, enda, endb) };
+            unsafe { byte_utils::skip_whitespace(&mut pa, &mut pb, enda, endb) };
             continue;
         }
 

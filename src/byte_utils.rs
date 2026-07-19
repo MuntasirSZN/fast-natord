@@ -20,6 +20,25 @@ pub fn is_ascii_ws(c: u8) -> bool {
 
 // ── SIMD ASCII detection ────────────────────────────────────────────
 
+/// Skip ASCII whitespace on both sides. Marked cold to keep the hot
+/// comparison loop free of whitespace-handling code.
+#[cold]
+pub unsafe fn skip_whitespace(
+    pa: &mut *const u8,
+    pb: &mut *const u8,
+    enda: *const u8,
+    endb: *const u8,
+) {
+    unsafe {
+        while *pa < enda && is_ascii_ws(**pa) {
+            *pa = pa.add(1);
+        }
+        while *pb < endb && is_ascii_ws(**pb) {
+            *pb = pb.add(1);
+        }
+    }
+}
+
 /// Returns `true` if every byte in `s` has bit 7 clear.
 ///
 /// Uses SIMD on x86_64 (SSE2+) and AArch64 (NEON).  Falls back to scalar
