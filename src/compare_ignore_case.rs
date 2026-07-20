@@ -87,11 +87,9 @@ pub fn compare_ignore_case_impl(a: &[u8], b: &[u8]) -> Ordering {
                     let ka = end_a - start_a;
                     let kb = end_b - start_b;
                     let min_len = if ka < kb { ka } else { kb };
-                    let common_end = a.as_ptr().add(start_a + min_len);
+                    let _common_end = a.as_ptr().add(start_a + min_len);
 
-                    if let Some(ord) =
-                        byte_utils::compare_word_at_a_time(pa, pb, min_len)
-                    {
+                    if let Some(ord) = byte_utils::compare_word_at_a_time(pa, pb, min_len) {
                         return ord;
                     }
 
@@ -155,9 +153,7 @@ pub fn compare_ignore_case_impl(a: &[u8], b: &[u8]) -> Ordering {
 
             // Equal-length: word-at-a-time compare.
             unsafe {
-                if let Some(ord) =
-                    byte_utils::compare_word_at_a_time(pa, pb, ka)
-                {
+                if let Some(ord) = byte_utils::compare_word_at_a_time(pa, pb, ka) {
                     return ord;
                 }
             }
