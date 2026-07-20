@@ -9,6 +9,7 @@ clippy := "cargo clippy --all-targets --all-features"
 coverage := "cargo llvm-cov --all-features --workspace"
 build := "cargo build --all-features --locked"
 nextest := "cargo hack nextest run --locked --optional-deps --each-feature"
+host-tuple := `rustc --print=host-tuple`
 
 # Default recipe (shows help)
 _default:
@@ -72,6 +73,12 @@ test:
 # Run tests without doc tests
 test-fast:
     {{ nextest }}
+
+# Run tests with ASAN (requires nightly + clang/llvm)
+asan-test:
+    RUSTFLAGS="-Zsanitizer=address" \
+        cargo +nightly nextest run -Zbuild-std --all-features \
+            --target {{ host-tuple }}
 
 # Build benchmarks for CodSpeed CI
 bench-build:
