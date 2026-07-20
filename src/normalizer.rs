@@ -261,6 +261,10 @@ impl Normalizer {
         // Fast path: if the string is all-ASCII we can do a bulk
         // lowercasing with no per-byte branching beyond the check.
         if byte_utils::simd_is_ascii(s.as_bytes()) {
+            // Already-lowercase ASCII: nothing to fold, keep borrowed.
+            if !s.as_bytes().iter().any(|b| b.is_ascii_uppercase()) {
+                return s;
+            }
             let mut bytes = s.as_bytes().to_vec();
             bytes.make_ascii_lowercase();
             // SAFETY: ASCII bytes are always valid UTF-8.
@@ -312,8 +316,21 @@ impl Normalizer {
     /// Used when the `normalize` feature is not enabled.
     #[cfg(not(feature = "normalize"))]
     fn fold_unicode_fallback<'a>(&self, s: Cow<'a, str>) -> Cow<'a, str> {
-        // Single pass: fold every char, track whether anything changed.
-        // A two-pass approach with `str::chars().position()` + slice
+        // Fast path: all-ASCII strings need only ASCII case folding.
+        // Avoids char-by-char Unicode to_lowercase() overhead.
+        if byte_utils::simd_is_ascii(s.as_bytes()) {
+            // Already-lowercase ASCII: nothing to fold, keep borrowed.
+            if !s.as_bytes().iter().any(|b| b.is_ascii_uppercase()) {
+                return s;
+            }
+            let mut bytes = s.as_bytes().to_vec();
+            bytes.make_ascii_lowercase();
+            // SAFETY: ASCII bytes are always valid UTF-8.
+            return Cow::Owned(unsafe { String::from_utf8_unchecked(bytes) });
+        }
+
+        // Full Unicode case folding for non-ASCII input.
+        // A single-pass approach with `str::chars().position()` + slice
         // would confuse char indices with byte indices on multi-byte
         // strings and panic.
         let mut result = String::with_capacity(s.len());
