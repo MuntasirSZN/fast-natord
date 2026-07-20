@@ -88,42 +88,10 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
                     let min_len = if ka < kb { ka } else { kb };
                     let common_end = a.as_ptr().add(start_a + min_len);
 
-                    let mut pa_eq = pa;
-                    let mut pb_eq = pb;
-                    while (pa_eq as usize) + 16 <= (common_end as usize) {
-                        let wa = (pa_eq as *const u128).read_unaligned();
-                        let wb = (pb_eq as *const u128).read_unaligned();
-                        let diff = wa ^ wb;
-                        if diff != 0 {
-                            let byte_off = (diff.trailing_zeros() / 8) as usize;
-                            let ca_eq = *pa_eq.add(byte_off);
-                            let cb_eq = *pb_eq.add(byte_off);
-                            return if ca_eq < cb_eq { Less } else { Greater };
-                        }
-                        pa_eq = pa_eq.add(16);
-                        pb_eq = pb_eq.add(16);
-                    }
-                    while (pa_eq as usize) + 8 <= (common_end as usize) {
-                        let wa = (pa_eq as *const u64).read_unaligned();
-                        let wb = (pb_eq as *const u64).read_unaligned();
-                        let diff = wa ^ wb;
-                        if diff != 0 {
-                            let byte_off = (diff.trailing_zeros() / 8) as usize;
-                            let ca_eq = *pa_eq.add(byte_off);
-                            let cb_eq = *pb_eq.add(byte_off);
-                            return if ca_eq < cb_eq { Less } else { Greater };
-                        }
-                        pa_eq = pa_eq.add(8);
-                        pb_eq = pb_eq.add(8);
-                    }
-                    while pa_eq < common_end {
-                        let va = *pa_eq;
-                        let vb = *pb_eq;
-                        if va != vb {
-                            return if va < vb { Less } else { Greater };
-                        }
-                        pa_eq = pa_eq.add(1);
-                        pb_eq = pb_eq.add(1);
+                    if let Some(ord) =
+                        byte_utils::compare_word_at_a_time(pa, pb, min_len)
+                    {
+                        return ord;
                     }
 
                     if ka != kb {
@@ -188,47 +156,12 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
                 return ka.cmp(&kb);
             }
 
-            // Equal-length: u128 then u64 XOR + trailing_zeros.
-            let end_run = pa_after;
-            let mut pa_eq = pa;
-            let mut pb_eq = pb;
-
+            // Equal-length: word-at-a-time compare.
             unsafe {
-                while (pa_eq as usize) + 16 <= (end_run as usize) {
-                    let wa = (pa_eq as *const u128).read_unaligned();
-                    let wb = (pb_eq as *const u128).read_unaligned();
-                    let diff = wa ^ wb;
-                    if diff != 0 {
-                        let byte_off = (diff.trailing_zeros() / 8) as usize;
-                        let ca_eq = *pa_eq.add(byte_off);
-                        let cb_eq = *pb_eq.add(byte_off);
-                        return if ca_eq < cb_eq { Less } else { Greater };
-                    }
-                    pa_eq = pa_eq.add(16);
-                    pb_eq = pb_eq.add(16);
-                }
-                while (pa_eq as usize) + 8 <= (end_run as usize) {
-                    let wa = (pa_eq as *const u64).read_unaligned();
-                    let wb = (pb_eq as *const u64).read_unaligned();
-                    let diff = wa ^ wb;
-                    if diff != 0 {
-                        let byte_off = (diff.trailing_zeros() / 8) as usize;
-                        let ca_eq = *pa_eq.add(byte_off);
-                        let cb_eq = *pb_eq.add(byte_off);
-                        return if ca_eq < cb_eq { Less } else { Greater };
-                    }
-                    pa_eq = pa_eq.add(8);
-                    pb_eq = pb_eq.add(8);
-                }
-                // Tail bytes (0–7).
-                while pa_eq < end_run {
-                    let ca_eq = *pa_eq;
-                    let cb_eq = *pb_eq;
-                    if ca_eq != cb_eq {
-                        return if ca_eq < cb_eq { Less } else { Greater };
-                    }
-                    pa_eq = pa_eq.add(1);
-                    pb_eq = pb_eq.add(1);
+                if let Some(ord) =
+                    byte_utils::compare_word_at_a_time(pa, pb, ka)
+                {
+                    return ord;
                 }
             }
 
