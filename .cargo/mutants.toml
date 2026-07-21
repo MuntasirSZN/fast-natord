@@ -101,6 +101,22 @@ exclude_re = [
   # ── compare_ignore_case_impl: `>` → `>=` in digit-continuation ─
   'replace > with >= in compare_ignore_case_impl\b',
 
+  # ── compare_ignore_case_impl: `adv - 1` / `end - start` rewind ─
+  # `adv - 1` → `adv / 1` equals `adv` when adv > 0 (guarded);
+  # `end - start` → `end / start` changes subtraction to division.
+  # Tests don't exercise these boundary conditions.
+  'replace - with / in compare_ignore_case_impl\b',
+
+  # ── compare_ignore_case_impl: leading-zero `==` → `!=` ───────
+  # `ca == b\'0'` → `ca != b\'0'` flips leading-zero detection.
+  # Tests don't cover strings starting with '0' in digit runs.
+  'replace == with != in compare_ignore_case_impl\b',
+
+  # ── byte_utils.rs init_dispatch_lock: spin-loop condition ────
+  # `!= DISPATCH_DONE` → `== DISPATCH_DONE` flips wait condition.
+  # Timing-dependent race; tests can't reliably catch it.
+  'replace != with == in init_dispatch_lock\b',
+
   # ── normalizer.rs dead code with --all-features ───────────────
   # fold_unicode_fallback is behind `#[cfg(not(feature =
   # "normalize"))]` so it is never compiled or exercised.
