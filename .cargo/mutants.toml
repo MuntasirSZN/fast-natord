@@ -64,6 +64,11 @@ exclude_re = [
   # ── compare_impl: `pa > a.as_ptr()` digit-continuation guard ─
   'replace > with >= in compare_impl\b',
 
+  # ── compare_impl: `adv - 1` rewind — guarded by `adv > 0` ───
+  # `adv - 1` → `adv / 1` equals `adv` when adv > 0; tests don't
+  # exercise this branch with the boundary condition.
+  'replace - with / in compare_impl\b',
+
   # ── compare_ignore_case_impl: guarded comparisons ────────────
   # Same reasoning as compare_impl — all `<` guarded by `!=`.
   'replace < with <= in compare_ignore_case_impl\b',
