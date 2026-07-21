@@ -97,7 +97,7 @@ pub unsafe fn simd_is_ascii_sse2(s: &[u8]) -> bool {
 /// # Safety
 ///
 /// The caller must ensure the CPU supports AVX2 (check via
-/// `is_x86_feature_detected!` or [`cpuid_ascii_avx2::get`]).
+/// `core::arch::x86_64::__cpuid` or a dispatch table).
 /// `s` must be valid for reads up to `s.len()`.  Prefer calling the safe
 /// [`simd_is_ascii`] wrapper.
 #[cfg(all(target_arch = "x86_64", not(kani)))]
@@ -201,26 +201,137 @@ pub unsafe fn simd_is_ascii_sse41(s: &[u8]) -> bool {
     }
 }
 
+// ── Unified dispatch table (no_std) ────────────────────────────────
+//
+// Replaces the per-function cpufeatures cascades with a single dispatch
+// table, initialized once via an atomic state machine.  All three SIMD
+// dispatch points (simd_skip_equal, simd_skip_while_digit, simd_is_ascii)
+// read from the same table, eliminating redundant cpuid calls and
+// branch-heavy cascades on every comparison.
+
+#[cfg(target_arch = "x86_64")]
+struct Dispatch {
+    skip_equal: unsafe fn(&[u8], &[u8], usize, usize) -> usize,
+    skip_while_digit: unsafe fn(&[u8], usize) -> usize,
+    is_ascii: unsafe fn(&[u8]) -> bool,
+}
+
+use core::cell::UnsafeCell;
+#[cfg(target_arch = "x86_64")]
+use core::mem::MaybeUninit;
+#[cfg(target_arch = "x86_64")]
+use core::sync::atomic::{AtomicU8, Ordering};
+
+// One cpufeatures macro per unique feature — used only during the
+// one-time init below, never in the hot dispatch path.
 #[cfg(all(target_arch = "x86_64", not(kani)))]
-cpufeatures::new!(cpuid_ascii_avx2, "avx2");
+cpufeatures::new!(cpuid_avx512, "avx512f", "avx512bw");
 #[cfg(all(target_arch = "x86_64", not(kani)))]
-cpufeatures::new!(cpuid_ascii_avx512, "avx512f", "avx512bw");
+cpufeatures::new!(cpuid_avx2, "avx2");
+#[cfg(all(target_arch = "x86_64", not(kani)))]
+cpufeatures::new!(cpuid_sse42, "sse4.2");
+#[cfg(all(target_arch = "x86_64", not(kani)))]
+cpufeatures::new!(cpuid_sse41, "sse4.1");
+
+#[cfg(target_arch = "x86_64")]
+const DISPATCH_UNINIT: u8 = 0;
+#[cfg(target_arch = "x86_64")]
+const DISPATCH_LOCKED: u8 = 1;
+#[cfg(target_arch = "x86_64")]
+const DISPATCH_DONE: u8 = 2;
+
+/// Wraps `UnsafeCell<MaybeUninit<Dispatch>>` so we can implement `Sync`.
+#[cfg(target_arch = "x86_64")]
+struct DispatchCell(UnsafeCell<MaybeUninit<Dispatch>>);
+
+// SAFETY: The state machine guards access — only one writer (LOCKED),
+// readers only proceed after the Release store of DISPATCH_DONE.
+#[cfg(target_arch = "x86_64")]
+unsafe impl Sync for DispatchCell {}
+
+#[cfg(target_arch = "x86_64")]
+static DISPATCH_STATE: AtomicU8 = AtomicU8::new(DISPATCH_UNINIT);
+#[cfg(target_arch = "x86_64")]
+static DISPATCH_VALUE: DispatchCell = DispatchCell(UnsafeCell::new(MaybeUninit::uninit()));
+
+#[cfg(target_arch = "x86_64")]
+#[cold]
+fn init_dispatch_lock() -> &'static Dispatch {
+    if DISPATCH_STATE
+        .compare_exchange(
+            DISPATCH_UNINIT,
+            DISPATCH_LOCKED,
+            Ordering::Acquire,
+            Ordering::Acquire,
+        )
+        .is_ok()
+    {
+        // We hold the lock — compute the dispatch table using cpufeatures.
+        // These cpufeatures::get() calls run cpuid only once per program,
+        // not on every comparison.
+        let avx512 = cpuid_avx512::get();
+        let avx2 = cpuid_avx2::get();
+        let sse42 = cpuid_sse42::get();
+        let sse41 = cpuid_sse41::get();
+        let d = Dispatch {
+            skip_equal: if avx512 {
+                skip_avx512
+            } else if avx2 {
+                skip_avx2
+            } else if sse42 {
+                skip_sse42
+            } else if sse41 {
+                skip_sse41
+            } else {
+                skip_sse2
+            },
+            skip_while_digit: if avx512 {
+                skip_while_digit_avx512
+            } else if avx2 {
+                skip_while_digit_avx2
+            } else {
+                skip_while_digit_sse2
+            },
+            is_ascii: if avx512 {
+                simd_is_ascii_avx512
+            } else if avx2 {
+                simd_is_ascii_avx2
+            } else if sse41 {
+                simd_is_ascii_sse41
+            } else {
+                simd_is_ascii_sse2
+            },
+        };
+        unsafe {
+            (*DISPATCH_VALUE.0.get()).write(d);
+        }
+        DISPATCH_STATE.store(DISPATCH_DONE, Ordering::Release);
+    } else {
+        // Another thread is initializing — spin until done.
+        while DISPATCH_STATE.load(Ordering::Acquire) != DISPATCH_DONE {
+            core::hint::spin_loop();
+        }
+    }
+    unsafe { (*DISPATCH_VALUE.0.get()).assume_init_ref() }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[inline]
+fn get_dispatch() -> &'static Dispatch {
+    // Fast path: one acquire-load.
+    if DISPATCH_STATE.load(Ordering::Acquire) == DISPATCH_DONE {
+        // SAFETY: after DISPATCH_DONE is visible, VALUE is fully initialized.
+        unsafe {
+            return (*DISPATCH_VALUE.0.get()).assume_init_ref();
+        }
+    }
+    init_dispatch_lock()
+}
 
 #[cfg(all(target_arch = "x86_64", not(kani)))]
 #[inline(always)]
 unsafe fn simd_is_ascii_impl(s: &[u8]) -> bool {
-    unsafe {
-        if cpuid_ascii_avx512::get() {
-            simd_is_ascii_avx512(s)
-        } else if cpuid_ascii_avx2::get() {
-            simd_is_ascii_avx2(s)
-        } else if cpuid_sse41::get() {
-            simd_is_ascii_sse41(s)
-        } else {
-            // SSE2 is baseline for x86_64 (implied by the target arch).
-            simd_is_ascii_sse2(s)
-        }
-    }
+    unsafe { (get_dispatch().is_ascii)(s) }
 }
 
 // ── AArch64 NEON ASCII helpers ───────────────────────────────────────
@@ -491,16 +602,7 @@ pub unsafe fn skip_avx512(a: &[u8], b: &[u8], i: usize, common_len: usize) -> us
 }
 
 // ── Runtime dispatch (x86_64) ────────────────────────────────────────
-
-// Priority: AVX-512 > AVX2 > SSE4.2 > SSE4.1 > SSE2.
-#[cfg(all(target_arch = "x86_64", not(kani)))]
-cpufeatures::new!(cpuid_avx512, "avx512f", "avx512bw");
-#[cfg(all(target_arch = "x86_64", not(kani)))]
-cpufeatures::new!(cpuid_avx2, "avx2");
-#[cfg(all(target_arch = "x86_64", not(kani)))]
-cpufeatures::new!(cpuid_sse42, "sse4.2");
-#[cfg(all(target_arch = "x86_64", not(kani)))]
-cpufeatures::new!(cpuid_sse41, "sse4.1");
+// Dispatch reads from the unified table (initialized above).
 
 #[cfg(all(target_arch = "x86_64", not(kani)))]
 #[inline(always)]
@@ -510,18 +612,7 @@ pub unsafe fn simd_skip_equal(a: &[u8], b: &[u8], i: usize, common_len: usize) -
         if common_len < 16 {
             return finish_scalar(a, b, i, common_len);
         }
-        // Priority: AVX-512 > AVX2 > SSE4.2 > SSE4.1 > SSE2.
-        if cpuid_avx512::get() {
-            skip_avx512(a, b, i, common_len)
-        } else if cpuid_avx2::get() {
-            skip_avx2(a, b, i, common_len)
-        } else if cpuid_sse42::get() {
-            skip_sse42(a, b, i, common_len)
-        } else if cpuid_sse41::get() {
-            skip_sse41(a, b, i, common_len)
-        } else {
-            skip_sse2(a, b, i, common_len)
-        }
+        (get_dispatch().skip_equal)(a, b, i, common_len)
     }
 }
 
@@ -757,16 +848,7 @@ pub unsafe fn skip_while_digit_avx512(s: &[u8], start: usize) -> usize {
 #[cfg(all(target_arch = "x86_64", not(kani)))]
 #[inline(always)]
 unsafe fn simd_skip_while_digit_impl(s: &[u8], start: usize) -> usize {
-    unsafe {
-        // Priority: AVX-512 > AVX2 > SSE2.
-        if cpuid_avx512::get() {
-            skip_while_digit_avx512(s, start)
-        } else if cpuid_avx2::get() {
-            skip_while_digit_avx2(s, start)
-        } else {
-            skip_while_digit_sse2(s, start)
-        }
-    }
+    unsafe { (get_dispatch().skip_while_digit)(s, start) }
 }
 
 // ── AArch64 NEON digit-scan ───────────────────────────────────────
