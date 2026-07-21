@@ -138,7 +138,7 @@ Unicode normalization, and [`#![no_std]`][no_std] support.
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+MIT — see [LICENSE](https://github.com/MuntasirSZN/fast-natord/blob/main/LICENSE).
 
 [simd_normalizer]: https://crates.io/crates/simd-normalizer
 [compare]: https://docs.rs/fast-natord/latest/fast_natord/fn.compare.html
