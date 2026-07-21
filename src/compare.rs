@@ -24,6 +24,21 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
     let enda = unsafe { a.as_ptr().add(len_a) };
     let endb = unsafe { b.as_ptr().add(len_b) };
 
+    // Harden digit-run boundary: if `simd_skip_equal` landed in the
+    // middle of a digit run (both previous bytes are digits), rewind
+    // so the digit-aware loop gets full context for leading-zero and
+    // right-aligned handling.
+    if adv > 0 {
+        unsafe {
+            if byte_utils::is_digit(*a.as_ptr().add(adv - 1))
+                && byte_utils::is_digit(*b.as_ptr().add(adv - 1))
+            {
+                pa = a.as_ptr().add(adv - 1);
+                pb = b.as_ptr().add(adv - 1);
+            }
+        }
+    }
+
     loop {
         if pa >= enda || pb >= endb {
             let rem_a = (enda as usize).wrapping_sub(pa as usize);
@@ -78,15 +93,13 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
                         continue;
                     }
 
-                    // Long runs: SIMD end-finding + word-at-a-time compare.
+                    // Long runs: combined two-string digit scan.
                     let start_a = (pa as usize) - (a.as_ptr() as usize);
                     let start_b = (pb as usize) - (b.as_ptr() as usize);
-                    let end_a = byte_utils::simd_skip_while_digit(a, start_a);
-                    let end_b = byte_utils::simd_skip_while_digit(b, start_b);
+                    let (end_a, end_b) = byte_utils::simd_skip_while_digit_both(a, b, start_a, start_b);
                     let ka = end_a - start_a;
                     let kb = end_b - start_b;
                     let min_len = if ka < kb { ka } else { kb };
-                    let _common_end = a.as_ptr().add(start_a + min_len);
 
                     if let Some(ord) = byte_utils::compare_word_at_a_time(pa, pb, min_len) {
                         return ord;
@@ -108,11 +121,11 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
             let pa_after;
             let pb_after;
             unsafe {
-                // Short remaining strings: simultaneous scan avoids
-                // the double-scan of separate simd_skip_while_digit calls.
                 if (enda as usize).wrapping_sub(pa as usize) < 16
                     && (endb as usize).wrapping_sub(pb as usize) < 16
                 {
+                    // Short-path: byte-by-byte with early-return when
+                    // one side has a longer digit run (most common case).
                     let mut pa_run = pa;
                     let mut pb_run = pb;
                     loop {
@@ -122,27 +135,22 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
                             pa_run = pa_run.add(1);
                             pb_run = pb_run.add(1);
                         } else if da {
-                            // A has more digits → numerically larger.
                             return Greater;
                         } else if db {
-                            // B has more digits → numerically larger.
                             return Less;
                         } else {
                             break;
                         }
                     }
-                    // Equal-length runs: word-at-a-time compare.
-                    // pa_run / pb_run point past both runs.
                     ka = pa_run as usize - pa as usize;
                     kb = pb_run as usize - pb as usize;
                     pa_after = pa_run;
                     pb_after = pb_run;
                 } else {
-                    // Long runs: SIMD end-finding + word-at-a-time compare.
+                    // Long runs: combined SIMD digit scan.
                     let start_a = (pa as usize) - (a.as_ptr() as usize);
                     let start_b = (pb as usize) - (b.as_ptr() as usize);
-                    let end_a = byte_utils::simd_skip_while_digit(a, start_a);
-                    let end_b = byte_utils::simd_skip_while_digit(b, start_b);
+                    let (end_a, end_b) = byte_utils::simd_skip_while_digit_both(a, b, start_a, start_b);
                     ka = end_a - start_a;
                     kb = end_b - start_b;
                     pa_after = a.as_ptr().add(end_a);

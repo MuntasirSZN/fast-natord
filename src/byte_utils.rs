@@ -452,6 +452,10 @@ unsafe fn finish_scalar(a: &[u8], b: &[u8], mut k: usize, common_len: usize) -> 
             }
             k += 8;
         }
+        // Trailing <8 bytes: byte-by-byte to find exact diff position.
+        while k < common_len && *a.get_unchecked(k) == *b.get_unchecked(k) {
+            k += 1;
+        }
         k
     }
 }
@@ -609,8 +613,9 @@ pub unsafe fn skip_avx512(a: &[u8], b: &[u8], i: usize, common_len: usize) -> us
 #[inline(always)]
 pub unsafe fn simd_skip_equal(a: &[u8], b: &[u8], i: usize, common_len: usize) -> usize {
     unsafe {
-        // Short strings: skip SIMD dispatch overhead.
-        if common_len < 16 {
+        // Short strings: skip SIMD function call overhead (YMM save/restore
+        // can reach ~150 cycles even when no actual SIMD work is done).
+        if common_len < 32 {
             return finish_scalar(a, b, i, common_len);
         }
         (get_dispatch().skip_equal)(a, b, i, common_len)
@@ -783,6 +788,67 @@ pub unsafe fn skip_while_digit_avx2(s: &[u8], start: usize) -> usize {
             k += 1;
         }
         k
+    }
+}
+
+/// Scan two strings from `start` for their digit-run end simultaneously.
+///
+/// For the common case of both strings having short digit runs (<16 bytes),
+/// this uses a single-pass byte-by-byte scan that avoids the overhead of
+/// two separate `simd_skip_while_digit` calls and (in the right-aligned path)
+/// a second pass for word-at-a-time comparison.
+///
+/// Returns `(end_a, end_b)` — the index of the first non-digit byte in each string.
+///
+/// Safety
+///
+/// `start_a` must be ≤ `a.len()`, `start_b` ≤ `b.len()`.
+#[inline(always)]
+pub unsafe fn digit_run_ends_short(
+    a: &[u8],
+    b: &[u8],
+    start_a: usize,
+    start_b: usize,
+) -> (usize, usize) {
+    unsafe {
+        let end_a = a.len();
+        let end_b = b.len();
+        let mut ea = start_a;
+        while ea < end_a && is_digit(*a.get_unchecked(ea)) {
+            ea += 1;
+        }
+        let mut eb = start_b;
+        while eb < end_b && is_digit(*b.get_unchecked(eb)) {
+            eb += 1;
+        }
+        (ea, eb)
+    }
+}
+
+/// Combined two-string digit-run end scanning.  For long runs (≥16 bytes on
+/// either side) dispatches SIMD once (shared dispatch table lookup) then calls
+/// the appropriate backend for each string.  For short runs falls through to
+/// [`digit_run_ends_short`].
+///
+/// Returns `(end_a, end_b)`.
+///
+/// # Safety
+///
+/// `start_a` must be ≤ `a.len()`, `start_b` ≤ `b.len()`.
+#[inline(always)]
+pub unsafe fn simd_skip_while_digit_both(
+    a: &[u8], b: &[u8], start_a: usize, start_b: usize,
+) -> (usize, usize) {
+    let rem_a = a.len() - start_a;
+    let rem_b = b.len() - start_b;
+    if rem_a < 16 && rem_b < 16 {
+        // Both short: single-pass scalar avoids dispatch + SIMD overhead.
+        unsafe { digit_run_ends_short(a, b, start_a, start_b) }
+    } else {
+        // Long paths: independent SIMD scans (can't fuse across memory).
+        let end_a = unsafe { simd_skip_while_digit(a, start_a) };
+        let end_b = unsafe { simd_skip_while_digit(b, start_b) };
+        (end_a, end_b)
     }
 }
 
@@ -1135,25 +1201,25 @@ mod tests {
     fn test_finish_scalar_diff_within_8byte_chunk() {
         // 8 bytes, differ in last byte.
         // 16-byte check skipped, 8-byte check finds diff → chunk start (0)
+        // Then byte loop finds exact diff at position 7.
         let a = b"1234567A";
         let b = b"1234567B";
         unsafe {
-            assert_eq!(finish_scalar(a, b, 0, 8), 0);
+            assert_eq!(finish_scalar(a, b, 0, 8), 7);
         }
     }
 
     #[test]
     fn test_finish_scalar_diff_within_16byte_chunk() {
         // 16 bytes, differ in last byte.
-        // 16-byte chunk load detects diff, breaks into 8-byte loop which
-        // advances past the first equal 8 bytes before finding the diff.
         let a = b"abcdefghijklmnoP";
         let b = b"abcdefghijklmnoQ";
         unsafe {
             // u128 at 0: differ → break (k=0)
             // u64 at 0: "abcdefgh" equal → k=8
-            // u64 at 8: "ijklmnoP" vs "ijklmnoQ" differ → break, return 8
-            assert_eq!(finish_scalar(a, b, 0, 16), 8);
+            // u64 at 8: "ijklmnoP" vs "ijklmnoQ" differ → break
+            // byte loop: finds diff at position 15
+            assert_eq!(finish_scalar(a, b, 0, 16), 15);
         }
     }
 
@@ -1164,19 +1230,20 @@ mod tests {
         let b = b"abcdefghijklmnop1234567B";
         unsafe {
             // 16-byte check at 0: passes, k=16.
-            // 8-byte check at 16: finds diff, breaks, returns 16.
+            // 8-byte check at 16: finds diff, breaks.
+            // byte loop: finds exact diff at position 23.
             let k = finish_scalar(a, b, 0, 24);
-            assert_eq!(k, 16);
+            assert_eq!(k, 23);
         }
     }
 
     #[test]
     fn test_finish_scalar_short_below_8() {
-        // < 8 bytes: no 8-byte or 16-byte chunks possible, returns start offset.
+        // < 8 bytes: u128/u64 skipped, byte loop finds exact diff.
         let a = b"ab";
         let b = b"ab";
         unsafe {
-            assert_eq!(finish_scalar(a, b, 0, 2), 0);
+            assert_eq!(finish_scalar(a, b, 0, 2), 2);
         }
 
         let a = b"a";
@@ -1193,10 +1260,10 @@ mod tests {
         unsafe {
             assert_eq!(simd_skip_equal(a, a, 0, 16), 16);
         }
-        let a = b"abcdefghijklmnop1234"; // 20 bytes, tail <8 not advanced by finish_scalar
+        let a = b"abcdefghijklmnop1234"; // 20 bytes
         unsafe {
-            // SIMD covers 0..16, finish_scalar(16,20): 16+8=24>20 → returns 16
-            assert_eq!(simd_skip_equal(a, a, 0, 20), 16);
+            // finish_scalar now advances through the tail.
+            assert_eq!(simd_skip_equal(a, a, 0, 20), 20);
         }
     }
 
@@ -1237,29 +1304,32 @@ mod tests {
 
     #[test]
     fn test_simd_skip_equal_diff_in_tail() {
-        // Diff within <8-byte tail: finish_scalar can't advance, returns chunk start.
+        // Diff within <8-byte tail: finish_scalar now finds exact diff.
         let a = b"abcdefghijklmnop12345";
         let b = b"abcdefghijklmnop123XY";
         unsafe {
             // SIMD covers 0..16 (all equal), then finish_scalar(16,20):
-            // 16+8=24>20 → returns 16.
+            // byte loop finds exact diff at position 19.
             let k = simd_skip_equal(a, b, 0, 20);
-            assert_eq!(k, 16);
+            assert_eq!(k, 19);
         }
     }
 
     #[test]
     fn test_simd_skip_equal_short() {
-        // < 8 bytes: no SIMD stride, finish_scalar can't skip → returns 0.
+        // < 8 bytes: no SIMD stride, finish_scalar byte loop finds exact diff.
         let a = b"short";
         let b = b"shXrt";
         unsafe {
-            assert_eq!(simd_skip_equal(a, b, 0, 5), 0);
+            assert_eq!(simd_skip_equal(a, b, 0, 5), 2);
         }
+    }
 
+    #[test]
+    fn test_simd_skip_equal_short_identical() {
         let a = b"ab";
         unsafe {
-            assert_eq!(simd_skip_equal(a, a, 0, 2), 0);
+            assert_eq!(simd_skip_equal(a, a, 0, 2), 2);
         }
     }
 }
