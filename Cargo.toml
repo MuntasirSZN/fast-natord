@@ -1,6 +1,6 @@
 [package]
 name = "fast-natord"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 rust-version = "1.91"
 description = "Natural ordering for Rust"
@@ -22,7 +22,7 @@ cpufeatures = "0.3.0"
 
 # IDE in windows won't work, CI fails with path too long, workaround
 # until a solution is found.
-[target.'cfg(kani_ra)'.dev-dependencies]
+[target."cfg(kani_ra)".dev-dependencies]
 kani = { git = "https://github.com/model-checking/kani" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
