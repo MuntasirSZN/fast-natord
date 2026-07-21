@@ -209,17 +209,18 @@ pub unsafe fn simd_is_ascii_sse41(s: &[u8]) -> bool {
 // read from the same table, eliminating redundant cpuid calls and
 // branch-heavy cascades on every comparison.
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", not(kani)))]
 struct Dispatch {
     skip_equal: unsafe fn(&[u8], &[u8], usize, usize) -> usize,
     skip_while_digit: unsafe fn(&[u8], usize) -> usize,
     is_ascii: unsafe fn(&[u8]) -> bool,
 }
 
+#[cfg(all(target_arch = "x86_64", not(kani)))]
 use core::cell::UnsafeCell;
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", not(kani)))]
 use core::mem::MaybeUninit;
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", not(kani)))]
 use core::sync::atomic::{AtomicU8, Ordering};
 
 // One cpufeatures macro per unique feature — used only during the
@@ -233,28 +234,28 @@ cpufeatures::new!(cpuid_sse42, "sse4.2");
 #[cfg(all(target_arch = "x86_64", not(kani)))]
 cpufeatures::new!(cpuid_sse41, "sse4.1");
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", not(kani)))]
 const DISPATCH_UNINIT: u8 = 0;
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", not(kani)))]
 const DISPATCH_LOCKED: u8 = 1;
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", not(kani)))]
 const DISPATCH_DONE: u8 = 2;
 
 /// Wraps `UnsafeCell<MaybeUninit<Dispatch>>` so we can implement `Sync`.
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", not(kani)))]
 struct DispatchCell(UnsafeCell<MaybeUninit<Dispatch>>);
 
 // SAFETY: The state machine guards access — only one writer (LOCKED),
 // readers only proceed after the Release store of DISPATCH_DONE.
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", not(kani)))]
 unsafe impl Sync for DispatchCell {}
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", not(kani)))]
 static DISPATCH_STATE: AtomicU8 = AtomicU8::new(DISPATCH_UNINIT);
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", not(kani)))]
 static DISPATCH_VALUE: DispatchCell = DispatchCell(UnsafeCell::new(MaybeUninit::uninit()));
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", not(kani)))]
 #[cold]
 fn init_dispatch_lock() -> &'static Dispatch {
     if DISPATCH_STATE
@@ -315,7 +316,7 @@ fn init_dispatch_lock() -> &'static Dispatch {
     unsafe { (*DISPATCH_VALUE.0.get()).assume_init_ref() }
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", not(kani)))]
 #[inline]
 fn get_dispatch() -> &'static Dispatch {
     // Fast path: one acquire-load.
