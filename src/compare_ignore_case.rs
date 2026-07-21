@@ -26,12 +26,17 @@ pub fn compare_ignore_case_impl(a: &[u8], b: &[u8]) -> Ordering {
     let endb = unsafe { b.as_ptr().add(len_b) };
 
     // Harden digit-run boundary: if `simd_skip_equal` landed in the
-    // middle of a digit run (both previous bytes are digits), rewind
-    // so the digit-aware loop gets full context for leading-zero and
+    // middle of a digit run (both previous bytes are digits AND both
+    // next bytes are digits, meaning the run continues past the boundary),
+    // rewind so the digit-aware loop gets full context for leading-zero and
     // right-aligned handling.
-    if adv > 0 {
+    if adv > 0 && adv < common_len {
         unsafe {
-            if byte_utils::is_digit(*a.as_ptr().add(adv - 1))
+            let ca_after = *a.as_ptr().add(adv);
+            let cb_after = *b.as_ptr().add(adv);
+            if byte_utils::is_digit(ca_after)
+                && byte_utils::is_digit(cb_after)
+                && byte_utils::is_digit(*a.as_ptr().add(adv - 1))
                 && byte_utils::is_digit(*b.as_ptr().add(adv - 1))
             {
                 pa = a.as_ptr().add(adv - 1);
