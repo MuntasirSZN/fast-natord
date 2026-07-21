@@ -56,8 +56,12 @@ pub fn compare_ignore_case_impl(a: &[u8], b: &[u8]) -> Ordering {
 
         // Both sides are digits: compare the two runs.
         if byte_utils::is_digit(ca) && byte_utils::is_digit(cb) {
-            let la0 = ca == b'0';
-            let lb0 = cb == b'0';
+            // True leading-zero: current byte is '0' AND it's the first
+            // byte of the digit run (not a middle digit after rewind).
+            let la0 =
+                ca == b'0' && (pa == a.as_ptr() || unsafe { !byte_utils::is_digit(*pa.sub(1)) });
+            let lb0 =
+                cb == b'0' && (pb == b.as_ptr() || unsafe { !byte_utils::is_digit(*pb.sub(1)) });
 
             if la0 || lb0 {
                 // Left-aligned (leading zero): shorter run can win.
@@ -97,7 +101,8 @@ pub fn compare_ignore_case_impl(a: &[u8], b: &[u8]) -> Ordering {
                     // Long runs: combined two-string digit scan.
                     let start_a = (pa as usize) - (a.as_ptr() as usize);
                     let start_b = (pb as usize) - (b.as_ptr() as usize);
-                    let (end_a, end_b) = byte_utils::simd_skip_while_digit_both(a, b, start_a, start_b);
+                    let (end_a, end_b) =
+                        byte_utils::simd_skip_while_digit_both(a, b, start_a, start_b);
                     let ka = end_a - start_a;
                     let kb = end_b - start_b;
                     let min_len = if ka < kb { ka } else { kb };
@@ -151,7 +156,8 @@ pub fn compare_ignore_case_impl(a: &[u8], b: &[u8]) -> Ordering {
                     // Long runs: combined SIMD digit scan.
                     let start_a = (pa as usize) - (a.as_ptr() as usize);
                     let start_b = (pb as usize) - (b.as_ptr() as usize);
-                    let (end_a, end_b) = byte_utils::simd_skip_while_digit_both(a, b, start_a, start_b);
+                    let (end_a, end_b) =
+                        byte_utils::simd_skip_while_digit_both(a, b, start_a, start_b);
                     ka = end_a - start_a;
                     kb = end_b - start_b;
                     pa_run = a.as_ptr().add(end_a);

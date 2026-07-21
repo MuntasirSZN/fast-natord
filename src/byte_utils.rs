@@ -837,7 +837,10 @@ pub unsafe fn digit_run_ends_short(
 /// `start_a` must be ≤ `a.len()`, `start_b` ≤ `b.len()`.
 #[inline(always)]
 pub unsafe fn simd_skip_while_digit_both(
-    a: &[u8], b: &[u8], start_a: usize, start_b: usize,
+    a: &[u8],
+    b: &[u8],
+    start_a: usize,
+    start_b: usize,
 ) -> (usize, usize) {
     let rem_a = a.len() - start_a;
     let rem_b = b.len() - start_b;
