@@ -62,9 +62,9 @@ allocation regardless of the configured normalization form.
 | `normalize` | off | Enables NFC, NFD, NFKC, NFKD normalization and SIMD-accelerated case folding via [`simd-normalizer`][simd_normalizer] (Unicode 17). |
 
 Without `normalize`:
-* [`Normalization::Nfc`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enum.Normalization.html#variant.Nfc) / [`Normalization::Nfd`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enum.Normalization.html#variant.Nfd) / [`Normalization::Nfkc`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enum.Normalization.html#variant.Nfkc) / [`Normalization::Nfkd`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enum.Normalization.html#variant.Nfkd) silently behave as [`None`][None].
-* [`CaseMode::Fold`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enum.CaseMode.html#variant.Fold) falls back to `char::to_lowercase()` (no SIMD).
-* [`CaseMode::AsciiOnly`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enum.CaseMode.html#variant.AsciiOnly) and [`CaseMode::Sensitive`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enum.CaseMode.html#variant.Sensitive) are unaffected.
+* [`Normalization::Nfc`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enums/enum.Normalization.html#variant.Nfc) / [`Normalization::Nfd`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enums/enum.Normalization.html#variant.Nfd) / [`Normalization::Nfkc`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enums/enum.Normalization.html#variant.Nfkc) / [`Normalization::Nfkd`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enums/enum.Normalization.html#variant.Nfkd) silently behave as [`None`][None].
+* [`CaseMode::Fold`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enums/enum.CaseMode.html#variant.Fold) falls back to `char::to_lowercase()` (no SIMD).
+* [`CaseMode::AsciiOnly`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enums/enum.CaseMode.html#variant.AsciiOnly) and [`CaseMode::Sensitive`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/enums/enum.CaseMode.html#variant.Sensitive) are unaffected.
 
 ## [`no_std`][no_std]
 
