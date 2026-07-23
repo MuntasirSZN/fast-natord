@@ -33,6 +33,8 @@
 //!   acceleration).
 //! * [`CaseMode::AsciiOnly`] and [`CaseMode::Sensitive`] are unaffected.
 
+pub mod enums;
+
 use alloc::borrow::Cow;
 use alloc::string::String;
 use core::cmp::Ordering;
@@ -41,49 +43,7 @@ use core::cmp::Ordering;
 use simd_normalizer::casefold;
 
 use crate::byte_utils;
-
-// ── Enums ────────────────────────────────────────────────────────────
-
-/// Unicode normalization form.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Normalization {
-    /// No normalization.
-    #[default]
-    None,
-    /// NFC — canonical decomposition followed by canonical composition.
-    ///
-    /// The most broadly useful normalization: makes canonically
-    /// equivalent strings (e.g., `é` U+00E9 vs `e\u{301}`) compare
-    /// as equal.  Requires the `normalize` feature; without it this
-    /// variant is a silent no-op.
-    Nfc,
-    /// NFD — canonical decomposition.
-    Nfd,
-    /// NFKC — compatibility decomposition + canonical composition.
-    Nfkc,
-    /// NFKD — compatibility decomposition.
-    Nfkd,
-}
-
-/// Case handling mode.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum CaseMode {
-    /// Case-sensitive (default).
-    #[default]
-    Sensitive,
-    /// Full Unicode case folding.
-    ///
-    /// When the `normalize` feature is enabled this delegates to
-    /// `simd-normalizer`'s SIMD-accelerated simple case folding
-    /// (CaseFolding.txt, status C+S).  Without the feature it falls
-    /// back to [`char::to_lowercase()`].
-    Fold,
-    /// ASCII-only case folding.
-    ///
-    /// Non-ASCII characters are left unchanged.  Much faster than
-    /// [`Fold`](CaseMode::Fold) for predominantly ASCII data.
-    AsciiOnly,
-}
+pub use enums::{CaseMode, Normalization};
 
 // ── Normalizer ───────────────────────────────────────────────────────
 
@@ -98,15 +58,11 @@ pub enum CaseMode {
 /// ```rust
 /// use fast_natord::{Normalizer, Normalization, CaseMode};
 ///
-/// // Case-insensitive natural sort with NFC normalisation.
 /// let norm = Normalizer::new()
 ///     .normalization(Normalization::Nfc)
 ///     .case(CaseMode::Fold);
 /// assert_eq!(norm.compare("ABC", "abc"), core::cmp::Ordering::Equal);
 /// assert_eq!(norm.compare("pic10", "pic2"), core::cmp::Ordering::Greater);
-///
-/// // When the `normalize` feature is enabled, canonically equivalent
-/// // strings like `é` (U+00E9) and `e\u{301}` compare as equal under NFC.
 /// ```
 #[derive(Clone, Debug)]
 pub struct Normalizer {
@@ -185,17 +141,13 @@ impl Normalizer {
 
     /// Normalize `s` according to this normalizer's configuration.
     ///
-    /// Returns `Cow::Borrowed` when no transformation is needed (e.g.,
-    /// all-ASCII input with NFC normalization, or `Normalization::None`
-    /// with `CaseMode::Sensitive`).
+    /// Returns `Cow::Borrowed` when no transformation is needed.
     pub fn normalize<'a>(&self, s: &'a str) -> Cow<'a, str> {
-        // Fastest path: nothing to do.
         if self.normalization == Normalization::None && self.case_mode == CaseMode::Sensitive {
             return Cow::Borrowed(s);
         }
 
-        // Step 1 — Unicode normalization (SIMD-accelerated via
-        // simd-normalizer when the feature is enabled).
+        // Step 1 — Unicode normalization.
         let s = self.apply_normalization(s);
 
         // Step 2 — Case folding.
@@ -204,8 +156,7 @@ impl Normalizer {
 
     /// Compare two strings using this normalizer's configuration.
     ///
-    /// Equivalent to `self.normalize(a).as_ref().cmp(self.normalize(b).as_ref())`
-    /// but uses the optimized case-sensitive comparator after normalization.
+    /// Equivalent to normalizing both then using the optimised comparator.
     pub fn compare(&self, a: &str, b: &str) -> Ordering {
         let na = self.normalize(a);
         let nb = self.normalize(b);
@@ -214,30 +165,26 @@ impl Normalizer {
 
     // ── Internal helpers ────────────────────────────────────────────
 
-    /// Apply Unicode normalization (if configured).
     fn apply_normalization<'a>(&self, s: &'a str) -> Cow<'a, str> {
         match self.normalization {
             Normalization::None => Cow::Borrowed(s),
             _ => {
-                // SIMD fast path: all-ASCII strings are in every normal
-                // form, so we skip the normalizer entirely.
+                // SIMD fast path: all-ASCII is already normalized.
                 if byte_utils::simd_is_ascii(s.as_bytes()) {
                     return Cow::Borrowed(s);
                 }
 
                 #[cfg(feature = "normalize")]
                 {
-                    // Use simd-normalizer's UnicodeNormalization trait
                     use simd_normalizer::UnicodeNormalization;
-                    let norm = match self.normalization {
+
+                    match self.normalization {
                         Normalization::Nfc => s.nfc(),
                         Normalization::Nfd => s.nfd(),
                         Normalization::Nfkc => s.nfkc(),
                         Normalization::Nfkd => s.nfkd(),
                         Normalization::None => unreachable!(),
-                    };
-                    // simd_normalizer returns Cow<'_, str>
-                    norm
+                    }
                 }
 
                 #[cfg(not(feature = "normalize"))]
@@ -250,7 +197,6 @@ impl Normalizer {
         }
     }
 
-    /// Apply case folding (if configured).
     fn apply_case<'a>(&self, s: Cow<'a, str>) -> Cow<'a, str> {
         match self.case_mode {
             CaseMode::Sensitive => s,
@@ -259,23 +205,17 @@ impl Normalizer {
         }
     }
 
-    /// ASCII-only case folding: lowercase [A-Z] → [a-z], keep other
-    /// bytes unchanged.
+    /// ASCII-only case folding: lowercase [A-Z] → [a-z].
     fn fold_ascii<'a>(&self, s: Cow<'a, str>) -> Cow<'a, str> {
-        // Fast path: if the string is all-ASCII we can do a bulk
-        // lowercasing with no per-byte branching beyond the check.
         if byte_utils::simd_is_ascii(s.as_bytes()) {
-            // Already-lowercase ASCII: nothing to fold, keep borrowed.
             if !s.as_bytes().iter().any(|b| b.is_ascii_uppercase()) {
                 return s;
             }
             let mut bytes = s.as_bytes().to_vec();
             bytes.make_ascii_lowercase();
-            // SAFETY: ASCII bytes are always valid UTF-8.
             return Cow::Owned(unsafe { String::from_utf8_unchecked(bytes) });
         }
 
-        // Mixed ASCII/non-ASCII: fold only the ASCII bytes.
         let mut result = String::with_capacity(s.len());
         let mut changed = false;
         for c in s.chars() {
@@ -290,16 +230,12 @@ impl Normalizer {
 
     /// Full Unicode case folding.
     fn fold_full<'a>(&self, s: Cow<'a, str>) -> Cow<'a, str> {
-        // Fast path: if the string is all-ASCII, use ASCII fast path
-        // even for full case folding (to_ascii_lowercase is correct for
-        // ASCII and avoids the cost of to_lowercase()).
         if byte_utils::simd_is_ascii(s.as_bytes()) {
             return self.fold_ascii(s);
         }
 
         #[cfg(feature = "normalize")]
         {
-            // Use simd-normalizer's SIMD-accelerated case folding.
             use simd_normalizer::CaseFoldMode;
             let folded = casefold(s.as_ref(), CaseFoldMode::Standard);
             match folded {
@@ -310,8 +246,6 @@ impl Normalizer {
 
         #[cfg(not(feature = "normalize"))]
         {
-            // Fallback: per-character `to_lowercase()` (handles
-            // multi-char expansions like 'ß' → 'ss').
             let mut result = String::with_capacity(s.len());
             let mut changed = false;
             for c in s.chars() {

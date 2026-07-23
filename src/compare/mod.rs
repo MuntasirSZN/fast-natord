@@ -1,15 +1,19 @@
+//! Case-sensitive natural ordering comparison.
+
 use crate::byte_utils;
-use crate::unicode;
 use core::cmp::Ordering;
 use core::cmp::Ordering::{Equal, Greater, Less};
 
-/// Case-insensitive natural order comparison on byte slices.
+#[cfg(kani)]
+mod kani;
+
+/// Case-sensitive natural order compare on byte slices.
 ///
-/// SIMD common-prefix skip (byte-level equality is safe because case
-/// folding happens in the per-byte tail), then a pointer-based scalar
-/// loop with numeric-run awareness.
+/// Uses SIMD to skip common prefix, then a pointer-based scalar
+/// loop with numeric-run awareness.  Equal-length digit runs use
+/// word-at-a-time comparison (XOR + trailing_zeros).
 #[inline(always)]
-pub fn compare_ignore_case_impl(a: &[u8], b: &[u8]) -> Ordering {
+pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
     if a.len() == b.len() && a.as_ptr() == b.as_ptr() {
         return Equal;
     }
@@ -59,17 +63,15 @@ pub fn compare_ignore_case_impl(a: &[u8], b: &[u8]) -> Ordering {
             cb = *pb;
         }
 
-        // Both sides are digits: compare the two runs.
         if byte_utils::is_digit(ca) && byte_utils::is_digit(cb) {
-            // True leading-zero: current byte is '0' AND it's the first
-            // byte of the digit run (not a middle digit after rewind).
+            // Both sides are digits.
             let la0 =
                 ca == b'0' && (pa == a.as_ptr() || unsafe { !byte_utils::is_digit(*pa.sub(1)) });
             let lb0 =
                 cb == b'0' && (pb == b.as_ptr() || unsafe { !byte_utils::is_digit(*pb.sub(1)) });
 
             if la0 || lb0 {
-                // Left-aligned (leading zero): shorter run can win.
+                // Left-aligned (leading-zero): shorter run can win.
                 unsafe {
                     // Short remaining strings: single-pass byte-by-byte
                     // avoids the overhead of two simd_skip_while_digit calls
@@ -129,22 +131,22 @@ pub fn compare_ignore_case_impl(a: &[u8], b: &[u8]) -> Ordering {
             // word-at-a-time compare.
             let ka;
             let kb;
-            let pa_run;
-            let pb_run;
+            let pa_after;
+            let pb_after;
             unsafe {
                 if (enda as usize).wrapping_sub(pa as usize) < 16
                     && (endb as usize).wrapping_sub(pb as usize) < 16
                 {
                     // Short-path: byte-by-byte with early-return when
                     // one side has a longer digit run (most common case).
-                    let mut pa_scan = pa;
-                    let mut pb_scan = pb;
+                    let mut pa_run = pa;
+                    let mut pb_run = pb;
                     loop {
-                        let da = pa_scan < enda && byte_utils::is_digit(*pa_scan);
-                        let db = pb_scan < endb && byte_utils::is_digit(*pb_scan);
+                        let da = pa_run < enda && byte_utils::is_digit(*pa_run);
+                        let db = pb_run < endb && byte_utils::is_digit(*pb_run);
                         if da && db {
-                            pa_scan = pa_scan.add(1);
-                            pb_scan = pb_scan.add(1);
+                            pa_run = pa_run.add(1);
+                            pb_run = pb_run.add(1);
                         } else if da {
                             return Greater;
                         } else if db {
@@ -153,10 +155,10 @@ pub fn compare_ignore_case_impl(a: &[u8], b: &[u8]) -> Ordering {
                             break;
                         }
                     }
-                    ka = pa_scan as usize - pa as usize;
-                    kb = pb_scan as usize - pb as usize;
-                    pa_run = pa_scan;
-                    pb_run = pb_scan;
+                    ka = pa_run as usize - pa as usize;
+                    kb = pb_run as usize - pb as usize;
+                    pa_after = pa_run;
+                    pb_after = pb_run;
                 } else {
                     // Long runs: combined SIMD digit scan.
                     let start_a = (pa as usize) - (a.as_ptr() as usize);
@@ -165,8 +167,8 @@ pub fn compare_ignore_case_impl(a: &[u8], b: &[u8]) -> Ordering {
                         byte_utils::simd_skip_while_digit_both(a, b, start_a, start_b);
                     ka = end_a - start_a;
                     kb = end_b - start_b;
-                    pa_run = a.as_ptr().add(end_a);
-                    pb_run = b.as_ptr().add(end_b);
+                    pa_after = a.as_ptr().add(end_a);
+                    pb_after = b.as_ptr().add(end_b);
                 }
             }
 
@@ -181,83 +183,38 @@ pub fn compare_ignore_case_impl(a: &[u8], b: &[u8]) -> Ordering {
                 }
             }
 
-            pa = pa_run;
-            pb = pb_run;
+            pa = pa_after;
+            pb = pb_after;
             continue;
         }
 
-        // Handle non-digits: check whitespace first, then case-fold.
-        if ca == cb {
-            // Matching bytes — check whitespace (cold path).
-            if byte_utils::is_ascii_ws(ca) {
+        // At most one side is a digit (or neither).
+        if ca != cb {
+            if byte_utils::is_ascii_ws(ca) || byte_utils::is_ascii_ws(cb) {
                 unsafe { byte_utils::skip_whitespace(&mut pa, &mut pb, enda, endb) };
                 continue;
             }
-            unsafe {
-                pa = pa.add(1);
-                pb = pb.add(1);
+            if byte_utils::is_digit(ca) != byte_utils::is_digit(cb)
+                && pa > a.as_ptr()
+                && unsafe { byte_utils::is_digit(*pa.sub(1)) }
+            {
+                return if byte_utils::is_digit(ca) {
+                    Greater
+                } else {
+                    Less
+                };
             }
-        } else if byte_utils::is_ascii_ws(ca) || byte_utils::is_ascii_ws(cb) {
-            // Differing due to whitespace on at least one side.
-            unsafe { byte_utils::skip_whitespace(&mut pa, &mut pb, enda, endb) };
-            continue;
-        } else if byte_utils::is_digit(ca) != byte_utils::is_digit(cb)
-            && pa > a.as_ptr()
-            && unsafe { byte_utils::is_digit(*pa.sub(1)) }
-        {
-            // Digit-run continuation: the longer run wins.
-            return if byte_utils::is_digit(ca) {
-                Greater
-            } else {
-                Less
-            };
-        } else if ca < 128 && cb < 128 {
-            // Both ASCII — lowercasing is cheap.
-            let lca = ca.to_ascii_lowercase();
-            let lcb = cb.to_ascii_lowercase();
-            if lca != lcb {
-                return if lca < lcb { Less } else { Greater };
-            }
-            unsafe {
-                pa = pa.add(1);
-                pb = pb.add(1);
-            }
-        } else if ca >= 128 && cb >= 128 {
-            // Both non-ASCII — decode code points and case-fold.
-            unsafe {
-                let rest_a = core::slice::from_raw_parts(pa, enda as usize - pa as usize);
-                let rest_b = core::slice::from_raw_parts(pb, endb as usize - pb as usize);
-                let (ch_a, adv_a) = unicode::decode_char(rest_a);
-                let (ch_b, adv_b) = unicode::decode_char(rest_b);
-                if ch_a != ch_b {
-                    let cmp = ch_a.to_lowercase().cmp(ch_b.to_lowercase());
-                    if cmp != Equal {
-                        return cmp;
-                    }
-                }
-                pa = pa.add(adv_a);
-                pb = pb.add(adv_b);
-            }
-        } else {
-            // One ASCII, one non-ASCII — byte order decides.
             return if ca < cb { Less } else { Greater };
         }
-    }
-}
 
-#[cfg(kani)]
-mod kani_proofs {
-    use super::*;
+        if unsafe { byte_utils::is_ascii_ws(*pa) } {
+            unsafe { byte_utils::skip_whitespace(&mut pa, &mut pb, enda, endb) };
+            continue;
+        }
 
-    #[kani::proof]
-    #[kani::unwind(3)]
-    fn compare_ignore_case_impl_memory_safe() {
-        let a0: u8 = kani::any();
-        let b0: u8 = kani::any();
-        kani::assume(a0 < 128);
-        kani::assume(b0 < 128);
-        let a = [a0];
-        let b = [b0];
-        let _ = compare_ignore_case_impl(&a, &b);
+        unsafe {
+            pa = pa.add(1);
+            pb = pb.add(1);
+        }
     }
 }

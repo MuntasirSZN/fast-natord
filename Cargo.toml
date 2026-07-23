@@ -12,11 +12,23 @@ keywords = ["natural", "order", "sort"]
 
 [[bench]]
 harness = false
-name = "natord"
+name = "compare"
+path = "benches/compare.rs"
 
 [[bench]]
 harness = false
-name = "valgrind"
+name = "normalizer"
+path = "benches/normalizer.rs"
+
+[[bench]]
+harness = false
+name = "valgrind_compare"
+path = "benches/valgrind_compare.rs"
+
+[[bench]]
+harness = false
+name = "valgrind_normalizer"
+path = "benches/valgrind_normalizer.rs"
 
 [dependencies]
 simd-normalizer = { version = "0.1", default-features = false, features = ["alloc"], optional = true }
