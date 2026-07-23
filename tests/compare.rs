@@ -231,3 +231,86 @@ fn test_compare_ka_eq() {
 fn test_compare_word_at_a_time_tail() {
     assert_eq!(compare("12345678", "12345679"), Ordering::Less);
 }
+
+// ── Leading-zero long-run SIMD path ────────────────────────────────
+//
+// These tests exercise the leading-zero branch where at least one side
+// has >=16 bytes remaining, forcing the SIMD `simd_skip_while_digit_both`
+// path instead of the inline byte-by-byte short path.
+
+#[test]
+fn test_compare_left_aligned_long_run() {
+    // Diff early: " 0X" then '0' vs '1', both digits, leading-zero `la0` true.
+    // Both sides have >=16 remaining → long-run SIMD path.
+    assert_eq!(
+        compare(" 0X0123456789012345ABCDEFG", " 0X1123456789012345ABCDEFG",),
+        Ordering::Less
+    );
+}
+
+#[test]
+fn test_compare_left_aligned_long_run_different_lengths() {
+    // Leading zero where runs have different lengths.
+    // After simd_skip_while_digit_both the word-at-a-time compare returns None
+    // (all common digits equal) and ka != kb triggers the length check.
+    assert_eq!(
+        compare(" 0X00123ABCDEF", " 0X0012345GHIJKLMNOPQRSTUV",),
+        Ordering::Less
+    );
+}
+
+#[test]
+fn test_compare_left_aligned_long_run_both_equal_digits() {
+    // Equal-length digit runs where all common digits are equal
+    // → word-at-a-time returns None, then ka == kb → continue past.
+    assert_eq!(
+        compare(
+            " 0X0012345678901234xAAAAAAAA",
+            " 0X0012345678901234xBBBBBBBB",
+        ),
+        Ordering::Less
+    );
+}
+
+// ── Leading-zero short-path edge: one side's run ends earlier ────────
+//
+// These hit the `da && !db` / `!da && db` branches in the leading-zero
+// short-path byte loop.
+
+#[test]
+fn test_compare_left_aligned_a_longer_run() {
+    // Both start at '0' leading zero, side a has longer digit run.
+    // This triggers `da && !db` → return Greater in the short-path loop.
+    assert_eq!(compare(" 0X001A", " 0X00B"), Ordering::Greater);
+}
+
+#[test]
+fn test_compare_left_aligned_b_longer_run() {
+    // Both start at '0' leading zero, side b has longer digit run.
+    // This triggers `!da && db` → return Less.
+    assert_eq!(compare(" 0X00A", " 0X001B"), Ordering::Less);
+}
+
+// ── Right-aligned: different digit-run lengths ───────────────────────
+
+#[test]
+fn test_compare_right_aligned_different_lengths() {
+    // Right-aligned (no leading zero), different digit-run lengths.
+    assert_eq!(compare(" 0X12345A", " 0X123B"), Ordering::Greater);
+    assert_eq!(compare(" 0X123A", " 0X12345B"), Ordering::Less);
+}
+
+// ── Word-at-a-time equal u128 chunk (32+ identical bytes) ───────────
+
+#[test]
+fn test_compare_word_at_a_time_long_equal_run() {
+    // 32+ identical digits → hits the equal u128 chunk path in
+    // compare_word_at_a_time (diff == 0, advances both pointers).
+    assert_eq!(
+        compare(
+            "x01234567890123456789012345678901A",
+            "x01234567890123456789012345678901B",
+        ),
+        Ordering::Less
+    );
+}

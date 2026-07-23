@@ -203,3 +203,89 @@ fn test_compare_iter_right_aligned_then_non_digit() {
     );
     assert_eq!(result, Ordering::Less);
 }
+
+// ── Left-aligned with non-equal first digits (immediate return) ────
+
+#[test]
+fn test_compare_iter_left_aligned_first_digit_differs() {
+    // Both are left-aligned (leading zero or zero), first digit differs → early return
+    let result = compare_iter(
+        "0a".chars(),
+        "1b".chars(),
+        |c| c.is_whitespace(),
+        |a, b| a.cmp(b),
+        |c| c.to_digit(10).map(|v| v as isize),
+    );
+    assert_eq!(result, Ordering::Less);
+
+    let result = compare_iter(
+        "1a".chars(),
+        "0b".chars(),
+        |c| c.is_whitespace(),
+        |a, b| a.cmp(b),
+        |c| c.to_digit(10).map(|v| v as isize),
+    );
+    assert_eq!(result, Ordering::Greater);
+}
+
+// ── Right-aligned: all digits equal, lastcmp is Equal at end ───────
+
+#[test]
+fn test_compare_iter_right_aligned_all_equal_then_non_digit() {
+    // Right-aligned with all matching digits, then same non-digit
+    let result = compare_iter(
+        "a12345b".chars(),
+        "a12345b".chars(),
+        |c| c.is_whitespace(),
+        |a, b| a.cmp(b),
+        |c| c.to_digit(10).map(|v| v as isize),
+    );
+    assert_eq!(result, Ordering::Equal);
+}
+
+// ── Left-aligned: loop exits via None,None (both runs end together) ─
+
+#[test]
+fn test_compare_iter_left_aligned_both_runs_end() {
+    // Left-aligned: both digit runs end without finding diff
+    let result = compare_iter(
+        "00ab".chars(),
+        "00cd".chars(),
+        |c| c.is_whitespace(),
+        |a, b| a.cmp(b),
+        |c| c.to_digit(10).map(|v| v as isize),
+    );
+    // After both zero-digit runs exhaust, compare 'a' vs 'c'
+    assert_eq!(result, Ordering::Less);
+}
+
+// ── Left-aligned: loop hits None on one side but not the other ─────
+
+#[test]
+fn test_compare_iter_left_aligned_left_longer_digit_run() {
+    // Left run extends beyond right run in leading-zero mode
+    let result = compare_iter(
+        "000ab".chars(),
+        "00cd".chars(),
+        |c| c.is_whitespace(),
+        |a, b| a.cmp(b),
+        |c| c.to_digit(10).map(|v| v as isize),
+    );
+    // 000 > 00 → Greater
+    assert_eq!(result, Ordering::Greater);
+}
+
+// ── Right-aligned: one run longer than the other after equal digits ─
+
+#[test]
+fn test_compare_iter_right_aligned_one_run_longer() {
+    // Right-aligned, one side has more digits after equal prefix
+    let result = compare_iter(
+        "a123".chars(),
+        "a1234".chars(),
+        |c| c.is_whitespace(),
+        |a, b| a.cmp(b),
+        |c| c.to_digit(10).map(|v| v as isize),
+    );
+    assert_eq!(result, Ordering::Less);
+}

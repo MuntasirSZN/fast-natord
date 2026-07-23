@@ -143,3 +143,55 @@ fn test_compare_ignore_case_ws_pb_bound() {
     let right = unsafe { core::str::from_utf8_unchecked(&v[..2]) };
     assert_eq!(compare_ignore_case("ab", right), Ordering::Greater);
 }
+
+// ── Leading-zero long-run SIMD path ────────────────────────────────
+
+#[test]
+fn test_ic_left_aligned_long_run() {
+    assert_eq!(
+        compare_ignore_case(" 0X0123456789012345ABCDEFG", " 0X1123456789012345ABCDEFG",),
+        Ordering::Less
+    );
+}
+
+#[test]
+fn test_ic_left_aligned_a_longer_run() {
+    assert_eq!(compare_ignore_case(" 0X001A", " 0X00B"), Ordering::Greater);
+}
+
+#[test]
+fn test_ic_left_aligned_b_longer_run() {
+    assert_eq!(compare_ignore_case(" 0X00A", " 0X001B"), Ordering::Less);
+}
+
+#[test]
+fn test_ic_left_aligned_long_run_equal_digits() {
+    // Equal-length, equal digits → word-at-a-time None, continue past.
+    assert_eq!(
+        compare_ignore_case(" 0X0012345678901234xAAAA", " 0X0012345678901234xBBBB",),
+        Ordering::Less
+    );
+}
+
+#[test]
+fn test_ic_right_aligned_different_lengths() {
+    assert_eq!(
+        compare_ignore_case(" 0X12345A", " 0X123B"),
+        Ordering::Greater
+    );
+    assert_eq!(compare_ignore_case(" 0X123A", " 0X12345B"), Ordering::Less);
+}
+
+// ── Case-fold non-digit path ───────────────────────────────────────
+
+#[test]
+fn test_ic_diff_eq_then_case_fold() {
+    // ca == cb (both non-digit) but not whitespace → advance past.
+    assert_eq!(compare_ignore_case("a10", "a2"), Ordering::Greater);
+}
+
+#[test]
+fn test_ic_non_digit_digit_boundary() {
+    // ca is digit, cb not digit, and pa is preceded by digit
+    assert_eq!(compare_ignore_case(" 1A", " AB"), Ordering::Less);
+}

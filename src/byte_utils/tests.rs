@@ -1,6 +1,7 @@
 //! Unit tests for byte_utils sub-modules.
 
 use super::basic::{finish_scalar, load_u64, load_u128};
+use super::skip_while_digit::{digit_run_ends_short, simd_skip_while_digit};
 use super::*;
 
 // On wasm32 `#[test]` delegates to wasm_bindgen_test.
@@ -225,5 +226,207 @@ fn test_simd_skip_equal_short_identical() {
     let a = b"ab";
     unsafe {
         assert_eq!(simd_skip_equal(a, a, 0, 2), 2);
+    }
+}
+
+// ── digit_run_ends_short ──────────────────────────────────────────────
+
+#[test]
+fn test_digit_run_ends_short_both_run() {
+    unsafe {
+        let (ea, eb) = digit_run_ends_short(b"ab12cde", b"xy123z", 2, 2);
+        assert_eq!(ea, 4, "a run should end at index 4 (the 'c')");
+        assert_eq!(eb, 5, "b run should end at index 5 (the 'z')");
+    }
+}
+
+#[test]
+fn test_digit_run_ends_short_a_longer() {
+    unsafe {
+        let (ea, eb) = digit_run_ends_short(b"ab12345x", b"xy12z", 2, 2);
+        assert_eq!(ea, 7, "a run has 5 digits");
+        assert_eq!(eb, 4, "b run has 2 digits");
+    }
+}
+
+#[test]
+fn test_digit_run_ends_short_a_shorter() {
+    unsafe {
+        let (ea, eb) = digit_run_ends_short(b"ab12x", b"xy123z", 2, 2);
+        assert_eq!(ea, 4, "a run ends at 4");
+        assert_eq!(eb, 5, "b run ends at 5");
+    }
+}
+
+#[test]
+fn test_digit_run_ends_short_all_digits() {
+    unsafe {
+        // Entire string is digits
+        let (ea, eb) = digit_run_ends_short(b"123456", b"789", 0, 0);
+        assert_eq!(ea, 6);
+        assert_eq!(eb, 3);
+    }
+}
+
+#[test]
+fn test_digit_run_ends_short_no_digits() {
+    unsafe {
+        let (ea, eb) = digit_run_ends_short(b"abc", b"xyz", 0, 0);
+        assert_eq!(ea, 0);
+        assert_eq!(eb, 0);
+    }
+}
+
+#[test]
+fn test_digit_run_ends_short_immediate_non_digit() {
+    unsafe {
+        let (ea, eb) = digit_run_ends_short(b"abx", b"xya", 2, 2);
+        assert_eq!(ea, 2, "no digit run in a");
+        assert_eq!(eb, 2, "no digit run in b");
+    }
+}
+
+// ── simd_skip_while_digit_both short-path ─────────────────────────────
+
+#[test]
+fn test_skip_while_digit_both_short_runs() {
+    // Both remaining < 16 → triggers digit_run_ends_short inside the function
+    unsafe {
+        let (ea, eb) = simd_skip_while_digit_both(
+            b"aa123bc", b"bb45xyz", 2, // start_a after "aa"
+            2, // start_b after "bb"
+        );
+        assert_eq!(ea, 5, "a: 3 digits '123', ends at index 5");
+        assert_eq!(eb, 4, "b: 2 digits '45', ends at index 4");
+    }
+}
+
+#[test]
+fn test_skip_while_digit_both_a_longer() {
+    unsafe {
+        let (ea, eb) = simd_skip_while_digit_both(b"aa12345xx", b"bb12yyy", 2, 2);
+        assert_eq!(ea, 7, "a: 5 digits ends at 7");
+        assert_eq!(eb, 4, "b: 2 digits ends at 4");
+    }
+}
+
+#[test]
+fn test_skip_while_digit_both_both_no_digits() {
+    unsafe {
+        let (ea, eb) = simd_skip_while_digit_both(b"abcdef", b"uvwxyz", 0, 0);
+        assert_eq!(ea, 0);
+        assert_eq!(eb, 0);
+    }
+}
+
+// ── compare_word_at_a_time equal u128 chunks ──────────────────────────
+
+#[test]
+fn test_word_at_a_time_u128_equal() {
+    // 16 equal bytes → hits the equal u128 chunk path (diff == 0)
+    unsafe {
+        let a = b"0123456789abcdef";
+        let b = b"0123456789abcdef";
+        assert_eq!(
+            compare_word_at_a_time(a.as_ptr(), b.as_ptr(), 16),
+            None,
+            "all equal should return None"
+        );
+    }
+}
+
+#[test]
+fn test_word_at_a_time_u128_equal_with_tail() {
+    // 20 bytes: first u128 equal, then u64 finds diff at byte 16
+    unsafe {
+        let a = b"0123456789abcdefGX";
+        let b = b"0123456789abcdefHY";
+        let res = compare_word_at_a_time(a.as_ptr(), b.as_ptr(), 18);
+        assert!(res.is_some());
+        assert_eq!(res, Some(core::cmp::Ordering::Less));
+    }
+}
+
+#[test]
+fn test_word_at_a_time_u64_equal_then_byte_diff() {
+    // 12 bytes: u128 skips (12 < 16), u64 block of 8 equal bytes, then byte diff
+    unsafe {
+        let a = b"01234567XY";
+        let b = b"01234567XZ";
+        let res = compare_word_at_a_time(a.as_ptr(), b.as_ptr(), 10);
+        assert!(res.is_some());
+        assert_eq!(res, Some(core::cmp::Ordering::Less));
+    }
+}
+
+// ── simd_skip_while_digit short <16 bytes ─────────────────────────────
+
+#[test]
+fn test_simd_skip_while_digit_scalar_short() {
+    // remaining < 16 → scalar fallback
+    unsafe {
+        let s = b"ab123c";
+        assert_eq!(simd_skip_while_digit(s, 2), 5);
+    }
+}
+
+#[test]
+fn test_simd_skip_while_digit_scalar_short_no_digits() {
+    unsafe {
+        let s = b"abcde";
+        assert_eq!(simd_skip_while_digit(s, 0), 0);
+    }
+}
+
+#[test]
+fn test_simd_skip_while_digit_scalar_short_all_digits() {
+    unsafe {
+        let s = b"12345";
+        assert_eq!(simd_skip_while_digit(s, 0), 5);
+    }
+}
+
+// ── simd_skip_equal short <32 bytes scalar fallback ───────────────────
+
+#[test]
+fn test_simd_skip_equal_under_32() {
+    let a = b"abcdefghij123456";
+    let b = b"abcdefghijX23456";
+    unsafe {
+        // common_len = 16 < 32 → uses finish_scalar directly, no SIMD dispatch
+        let k = simd_skip_equal(a, b, 0, 16);
+        assert_eq!(k, 10, "diff at byte 10 ('1' vs 'X')");
+    }
+}
+
+#[test]
+fn test_simd_skip_equal_at_32_boundary() {
+    let a = b"abcdefghijklmnopqrstuvwxyzABCD"; // 30 bytes
+    let b = b"abcdefghijklmnopqrstuvwxyzabcD"; // diff at byte 26
+    unsafe {
+        let k = simd_skip_equal(a, b, 0, 30);
+        assert_eq!(k, 26);
+    }
+}
+
+// ── finish_scalar edge: u64 all-equal then u128───
+
+#[test]
+fn test_finish_scalar_u128_all_equal_then_diff() {
+    // 24 bytes: first 16 (u128) equal, then 8 (u64) equal, then byte diff
+    let a = b"abcdefghijklmnop1234567A";
+    let b = b"abcdefghijklmnop1234567B";
+    unsafe {
+        assert_eq!(finish_scalar(a, b, 0, 24), 23);
+    }
+}
+
+#[test]
+fn test_finish_scalar_u128_diff_in_first_chunk() {
+    let a = b"abcdefghijklmnoPxxxxxx";
+    let b = b"abcdefghijklmnoQxxxxxx";
+    unsafe {
+        // diff at byte 15, common_len=22
+        assert_eq!(finish_scalar(a, b, 0, 22), 15);
     }
 }
