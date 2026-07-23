@@ -2,7 +2,7 @@
 
 #![cfg(kani)]
 
-use super::*;
+use crate::compare_ignore_case::compare_ignore_case_impl;
 
 #[kani::proof]
 #[kani::unwind(3)]

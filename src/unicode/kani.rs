@@ -2,7 +2,7 @@
 
 #![cfg(kani)]
 
-use super::*;
+use crate::unicode::utf8_char_len;
 
 #[kani::proof]
 fn utf8_char_len_range() {

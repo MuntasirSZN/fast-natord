@@ -2,7 +2,6 @@
 
 #![cfg(kani)]
 
-use super::*;
 use crate::byte_utils;
 use crate::byte_utils::basic;
 use crate::byte_utils::skip_equal;
