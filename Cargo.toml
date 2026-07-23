@@ -14,6 +14,10 @@ keywords = ["natural", "order", "sort"]
 harness = false
 name = "natord"
 
+[[bench]]
+harness = false
+name = "valgrind"
+
 [dependencies]
 simd-normalizer = { version = "0.1", default-features = false, features = ["alloc"], optional = true }
 
@@ -38,3 +42,10 @@ normalize = ["dep:simd-normalizer"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
+
+[profile.bench]
+debug = true
+strip = false
+
+[dev-dependencies]
+gungraun = { version = "0.19.4", features = ["cachegrind"] }
