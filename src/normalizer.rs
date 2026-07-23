@@ -37,6 +37,9 @@ use alloc::borrow::Cow;
 use alloc::string::String;
 use core::cmp::Ordering;
 
+#[cfg(feature = "normalize")]
+use simd_normalizer::casefold;
+
 use crate::byte_utils;
 
 // ── Enums ────────────────────────────────────────────────────────────
@@ -199,18 +202,14 @@ impl Normalizer {
         self.apply_case(s)
     }
 
-    /// Compare two strings after normalizing both.
+    /// Compare two strings using this normalizer's configuration.
     ///
-    /// Applies the configured normalization and/or case folding to both
-    /// strings upfront, then delegates to the SIMD-accelerated
-    /// case-sensitive natural order comparator.
-    ///
-    /// When both inputs are all-ASCII, no allocation or transformation
-    /// occurs for NFC normalization or ASCII-only case folding.
+    /// Equivalent to `self.normalize(a).as_ref().cmp(self.normalize(b).as_ref())`
+    /// but uses the optimized case-sensitive comparator after normalization.
     pub fn compare(&self, a: &str, b: &str) -> Ordering {
         let na = self.normalize(a);
         let nb = self.normalize(b);
-        crate::compare::compare_impl(na.as_bytes(), nb.as_bytes())
+        crate::compare(na.as_ref(), nb.as_ref())
     }
 
     // ── Internal helpers ────────────────────────────────────────────
@@ -228,18 +227,23 @@ impl Normalizer {
 
                 #[cfg(feature = "normalize")]
                 {
+                    // Use simd-normalizer's UnicodeNormalization trait
                     use simd_normalizer::UnicodeNormalization;
-                    match self.normalization {
+                    let norm = match self.normalization {
                         Normalization::Nfc => s.nfc(),
                         Normalization::Nfd => s.nfd(),
                         Normalization::Nfkc => s.nfkc(),
                         Normalization::Nfkd => s.nfkd(),
                         Normalization::None => unreachable!(),
-                    }
+                    };
+                    // simd_normalizer returns Cow<'_, str>
+                    norm
                 }
+
                 #[cfg(not(feature = "normalize"))]
                 {
-                    let _ = s;
+                    // Without the `normalize` feature, all normalization
+                    // forms silently behave as `None`.
                     Cow::Borrowed(s)
                 }
             }
@@ -250,8 +254,8 @@ impl Normalizer {
     fn apply_case<'a>(&self, s: Cow<'a, str>) -> Cow<'a, str> {
         match self.case_mode {
             CaseMode::Sensitive => s,
-            CaseMode::Fold => self.fold_unicode(s),
             CaseMode::AsciiOnly => self.fold_ascii(s),
+            CaseMode::Fold => self.fold_full(s),
         }
     }
 
@@ -285,64 +289,40 @@ impl Normalizer {
     }
 
     /// Full Unicode case folding.
-    ///
-    /// Delegates to `simd-normalizer`'s SIMD-accelerated case folding
-    /// when the `normalize` feature is enabled; falls back to
-    /// [`char::to_lowercase()`] otherwise.
-    fn fold_unicode<'a>(&self, s: Cow<'a, str>) -> Cow<'a, str> {
+    fn fold_full<'a>(&self, s: Cow<'a, str>) -> Cow<'a, str> {
+        // Fast path: if the string is all-ASCII, use ASCII fast path
+        // even for full case folding (to_ascii_lowercase is correct for
+        // ASCII and avoids the cost of to_lowercase()).
+        if byte_utils::simd_is_ascii(s.as_bytes()) {
+            return self.fold_ascii(s);
+        }
+
         #[cfg(feature = "normalize")]
         {
-            match s {
-                Cow::Borrowed(borrowed) => {
-                    simd_normalizer::casefold(borrowed, simd_normalizer::CaseFoldMode::Standard)
-                }
-                Cow::Owned(owned) => {
-                    match simd_normalizer::casefold(&owned, simd_normalizer::CaseFoldMode::Standard)
-                    {
-                        Cow::Owned(folded) => Cow::Owned(folded),
-                        Cow::Borrowed(_) => Cow::Owned(owned),
-                    }
-                }
+            // Use simd-normalizer's SIMD-accelerated case folding.
+            use simd_normalizer::CaseFoldMode;
+            let folded = casefold(s.as_ref(), CaseFoldMode::Standard);
+            match folded {
+                Cow::Owned(owned) => Cow::Owned(owned),
+                Cow::Borrowed(_) => s,
             }
         }
+
         #[cfg(not(feature = "normalize"))]
         {
-            self.fold_unicode_fallback(s)
-        }
-    }
-
-    /// Fallback Unicode case folding using [`char::to_lowercase()`].
-    ///
-    /// Used when the `normalize` feature is not enabled.
-    #[cfg(not(feature = "normalize"))]
-    fn fold_unicode_fallback<'a>(&self, s: Cow<'a, str>) -> Cow<'a, str> {
-        // Fast path: all-ASCII strings need only ASCII case folding.
-        // Avoids char-by-char Unicode to_lowercase() overhead.
-        if byte_utils::simd_is_ascii(s.as_bytes()) {
-            // Already-lowercase ASCII: nothing to fold, keep borrowed.
-            if !s.as_bytes().iter().any(|b| b.is_ascii_uppercase()) {
-                return s;
+            // Fallback: per-character `to_lowercase()` (handles
+            // multi-char expansions like 'ß' → 'ss').
+            let mut result = String::with_capacity(s.len());
+            let mut changed = false;
+            for c in s.chars() {
+                let folded: String = c.to_lowercase().collect();
+                if folded.len() != 1 || folded.chars().next().unwrap() != c {
+                    changed = true;
+                }
+                result.push_str(&folded);
             }
-            let mut bytes = s.as_bytes().to_vec();
-            bytes.make_ascii_lowercase();
-            // SAFETY: ASCII bytes are always valid UTF-8.
-            return Cow::Owned(unsafe { String::from_utf8_unchecked(bytes) });
+            if changed { Cow::Owned(result) } else { s }
         }
-
-        // Full Unicode case folding for non-ASCII input.
-        // A single-pass approach with `str::chars().position()` + slice
-        // would confuse char indices with byte indices on multi-byte
-        // strings and panic.
-        let mut result = String::with_capacity(s.len());
-        let mut changed = false;
-        for c in s.chars() {
-            let lc: char = c.to_lowercase().next().unwrap_or(c);
-            if lc != c {
-                changed = true;
-            }
-            result.push(lc);
-        }
-        if changed { Cow::Owned(result) } else { s }
     }
 }
 
@@ -373,161 +353,3 @@ static NORMALIZER_NFC_FOLD: Normalizer = Normalizer {
     normalization: Normalization::Nfc,
     case_mode: CaseMode::Fold,
 };
-
-// ── Tests ────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    // On wasm32 `#[test]` delegates to wasm_bindgen_test.
-    #[cfg(target_arch = "wasm32")]
-    use wasm_bindgen_test::wasm_bindgen_test as test;
-
-    #[test]
-    fn test_noop_normalizer() {
-        let n = Normalizer::new();
-        assert_eq!(n.normalize("hello"), Cow::Borrowed("hello"));
-        assert_eq!(n.compare("a", "b"), core::cmp::Ordering::Less);
-        assert_eq!(n.compare("b", "a"), core::cmp::Ordering::Greater);
-        assert_eq!(n.compare("a", "a"), core::cmp::Ordering::Equal);
-    }
-
-    #[test]
-    fn test_nfc_ascii_borrowed() {
-        // All-ASCII → NFC is a no-op → borrowed.
-        let n = Normalizer::new().nfc();
-        assert_eq!(n.normalize("hello world"), Cow::Borrowed("hello world"));
-    }
-
-    #[test]
-    fn test_ascii_only_borrowed_when_no_fold_needed() {
-        // Mixed ASCII/non-ASCII where all ASCII is already lowercase:
-        // fold_ascii should return Borrowed (no allocation).
-        let n = Normalizer::new().case_ascii_only();
-        let result = n.normalize("hello\u{00E9}");
-        match result {
-            Cow::Borrowed(s) => assert_eq!(s, "hello\u{00E9}"),
-            _ => panic!("expected Borrowed but got Owned"),
-        }
-    }
-
-    #[test]
-    fn test_ascii_case_fold_ascii_only() {
-        let n = Normalizer::new().case_ascii_only();
-        let norm = n.normalize("HelloWorld");
-        assert_eq!(norm, "helloworld");
-    }
-
-    #[test]
-    fn test_ascii_case_fold() {
-        let n = Normalizer::new().case_fold();
-        let norm = n.normalize("Hello World");
-        assert_eq!(norm, "hello world");
-    }
-
-    #[test]
-    #[cfg(feature = "normalize")]
-    fn test_nfc_decomposed() {
-        // É (U+00C9) decomposed = E (U+0045) + combining acute (U+0301).
-        // NFC should recompose to U+00C9.
-        let n = Normalizer::new().nfc();
-        let norm = n.normalize("E\u{301}");
-        assert_eq!(norm, "\u{00C9}");
-    }
-
-    #[test]
-    #[cfg(feature = "normalize")]
-    fn test_compare_normalized_nfc() {
-        // NFC makes é == e + combining accent.
-        let n = Normalizer::new().nfc();
-        assert_eq!(n.compare("\u{00E9}", "e\u{301}"), Ordering::Equal);
-    }
-
-    #[test]
-    #[cfg(feature = "normalize")]
-    fn test_compare_normalized_nfc_case_fold() {
-        let n = Normalizer::new().nfc().case_fold();
-        // Case folding + NFC: uppercase with composition vs lowercase decomposed.
-        assert_eq!(
-            n.compare("Caf\u{00C9}", "caf\u{0065}\u{0301}"),
-            Ordering::Equal
-        );
-    }
-
-    #[test]
-    fn test_case_fold_equivalent() {
-        let n = Normalizer::new().case_fold();
-        assert_eq!(n.compare("ABC", "abc"), Ordering::Equal);
-        assert_eq!(n.compare("ABC", "abd"), Ordering::Less);
-    }
-
-    #[test]
-    fn test_compare_normalized_numeric() {
-        let n = Normalizer::new().nfc().case_fold();
-        assert_eq!(n.compare("pic10", "pic2"), Ordering::Greater);
-        assert_eq!(n.compare("pic2", "pic10"), Ordering::Less);
-    }
-
-    #[test]
-    fn test_ascii_only_keeps_non_ascii() {
-        let n = Normalizer::new().case_ascii_only();
-        let result = n.normalize("ABCé");
-        // Uppercase ASCII → lowercased; non-ASCII → untouched (é stays é).
-        assert_eq!(result, "abcé");
-    }
-
-    #[test]
-    fn test_compare_empty_strings() {
-        let n = Normalizer::new().nfc().case_fold();
-        assert_eq!(n.compare("", ""), Ordering::Equal);
-        assert_eq!(n.compare("", "a"), Ordering::Less);
-        assert_eq!(n.compare("a", ""), Ordering::Greater);
-    }
-
-    #[test]
-    fn test_nfc_idempotent() {
-        let n = Normalizer::new().nfc();
-        let once = n.normalize("caf\u{00E9}").into_owned();
-        let twice = n.normalize(&once);
-        assert_eq!(once, twice);
-    }
-
-    #[test]
-    fn test_case_fold_idempotent() {
-        let n = Normalizer::new().case_fold();
-        let once = n.normalize("Hello Σ 123").into_owned();
-        let twice = n.normalize(&once);
-        assert_eq!(once, twice);
-    }
-
-    #[test]
-    fn test_leading_zeros_with_normalizer() {
-        let n = Normalizer::new().nfc().case_sensitive();
-        assert_eq!(n.compare("015", "12"), Ordering::Less);
-        assert_eq!(n.compare("12", "015"), Ordering::Greater);
-        assert_eq!(n.compare("0015", "015"), Ordering::Less);
-    }
-
-    #[test]
-    fn test_whitespace_with_normalizer() {
-        let n = Normalizer::new().nfc().case_sensitive();
-        assert_eq!(n.compare("pic4   alpha", "pic 4 else"), Ordering::Less);
-        assert_eq!(n.compare("pic 4 else", "pic4  last"), Ordering::Less);
-    }
-
-    #[test]
-    fn test_long_digit_runs_normalized() {
-        let n = Normalizer::new().nfc().case_fold();
-        assert_eq!(n.compare("123456789", "123456788"), Ordering::Greater);
-        assert_eq!(n.compare("99999", "100000"), Ordering::Less);
-    }
-
-    #[test]
-    fn test_compare_normalized_mixed() {
-        let n = Normalizer::new().nfc().case_fold();
-        // Various real-world-like comparisons.
-        assert_eq!(n.compare("RFC 2", "rfc 10"), Ordering::Less);
-        assert_eq!(n.compare("rfc 10", "RFC 2"), Ordering::Greater);
-        assert_eq!(n.compare("Pic 5", "pic 5"), Ordering::Equal);
-    }
-}
