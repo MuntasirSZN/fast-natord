@@ -41,6 +41,9 @@ cpufeatures = "0.3.0"
 [target."cfg(kani_ra)".dev-dependencies]
 kani = { git = "https://github.com/model-checking/kani" }
 
+[target.'cfg(not(any(target_os = "windows", target_arch = "wasm32")))'.dev-dependencies]
+gungraun = { version = "0.19.4", features = ["cachegrind"] }
+
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 divan = { package = "codspeed-divan-compat", version = "5" }
 proptest = "1"
@@ -58,6 +61,3 @@ unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
 [profile.bench]
 debug = true
 strip = false
-
-[dev-dependencies]
-gungraun = { version = "0.19.4", features = ["cachegrind"] }

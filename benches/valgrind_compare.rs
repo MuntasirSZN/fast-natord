@@ -2,8 +2,7 @@
 //!
 //! cargo bench --bench valgrind_compare
 
-#![cfg(not(target_os = "windows"))]
-#![cfg(not(target_arch = "wasm32"))]
+#![cfg(not(any(target_os = "windows", target_arch = "wasm32")))]
 
 use fast_natord::*;
 use gungraun::{Cachegrind, CachegrindMetrics, Dhat, Massif, Memcheck, OutputFormat, prelude::*};
