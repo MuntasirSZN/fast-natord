@@ -82,7 +82,7 @@ asan-test:
 
 # Build benchmarks for CodSpeed CI
 bench-build:
-    cargo codspeed build
+    cargo codspeed build --bench compare --bench normalizer
 
 # Run benchmarks for CodSpeed CI
 bench-ci: bench-build
