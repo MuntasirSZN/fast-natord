@@ -47,7 +47,6 @@ Most daily commands are wrapped in the `justfile`:
 | `just bench` | Run benchmarks locally |
 | `just coverage` | Generate a coverage summary |
 | `just coverage-html` | Generate and open an HTML coverage report |
-| `just mutants` | Run mutation tests with `cargo-mutants` |
 | `just miri` | Run Miri (nightly) for UB detection |
 
 ## Testing
@@ -68,14 +67,6 @@ Property-based tests live in [`tests/proptests.rs`](./tests/proptests.rs) and
 use the [`proptest`](https://crates.io/crates/proptest) crate. They verify
 reflexivity, transitivity, and ordering invariants. Run them as part of
 `just test`.
-
-### Mutation testing
-
-Mutation tests use `cargo-mutants`. Run locally:
-
-```sh
-just mutants
-```
 
 ### UB detection
 

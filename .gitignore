@@ -1,5 +1,3 @@
-target
-/mutants.out*
-/undefined
+/target
 /fuzz/outputs
 /fuzz/target

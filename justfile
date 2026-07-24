@@ -1,6 +1,6 @@
 # justfile for changelogen-rs development
 
-tools := "cargo-nextest cargo-deny cargo-llvm-cov cargo-watch cargo-hack kani-verifier cargo-mutants wasm-pack"
+tools := "cargo-nextest cargo-deny cargo-llvm-cov cargo-watch cargo-hack kani-verifier wasm-pack"
 
 # Commands
 
@@ -14,10 +14,6 @@ host-tuple := `rustc --print=host-tuple`
 # Default recipe (shows help)
 _default:
     @just --list
-
-# Run mutants
-mutants *ARGS:
-    cargo mutants --all-features {{ ARGS }}
 
 # Run miri
 miri:
