@@ -1,8 +1,12 @@
 //! Case-sensitive natural ordering comparison.
 
-use crate::byte_utils;
+pub(crate) mod common;
+
 use core::cmp::Ordering;
-use core::cmp::Ordering::{Equal, Greater, Less};
+use core::cmp::Ordering::{Greater, Less};
+
+use crate::byte_utils;
+use crate::compare::common::CompareCtx;
 
 #[cfg(kani)]
 mod kani;
@@ -12,64 +16,25 @@ mod kani;
 /// Uses SIMD to skip common prefix, then a pointer-based scalar
 /// loop with numeric-run awareness.  Equal-length digit runs use
 /// word-at-a-time comparison (XOR + trailing_zeros).
+///
+/// The setup and common loop patterns are factored through
+/// [`CompareCtx`] — shared with the case-insensitive backend.
 #[inline(always)]
 pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
-    if a.len() == b.len() && a.as_ptr() == b.as_ptr() {
-        return Equal;
-    }
-
-    let len_a = a.len();
-    let len_b = b.len();
-    let common_len = len_a.min(len_b);
-    let adv = unsafe { byte_utils::simd_skip_equal(a, b, 0, common_len) };
-
-    // SAFETY: adv ≤ common_len ≤ both lengths.
-    let mut pa = unsafe { a.as_ptr().add(adv) };
-    let mut pb = unsafe { b.as_ptr().add(adv) };
-    let enda = unsafe { a.as_ptr().add(len_a) };
-    let endb = unsafe { b.as_ptr().add(len_b) };
-
-    // Harden digit-run boundary: if `simd_skip_equal` landed in the
-    // middle of a digit run (both current and previous bytes are digits
-    // on both sides), rewind so the digit-aware loop gets full context
-    // for leading-zero and right-aligned handling.
-    if adv > 0 && adv < common_len {
-        unsafe {
-            if byte_utils::is_digit(*a.as_ptr().add(adv))
-                & byte_utils::is_digit(*b.as_ptr().add(adv))
-                & byte_utils::is_digit(*a.as_ptr().add(adv - 1))
-                & byte_utils::is_digit(*b.as_ptr().add(adv - 1))
-            {
-                pa = a.as_ptr().add(adv - 1);
-                pb = b.as_ptr().add(adv - 1);
-            }
-        }
-    }
+    let mut ctx = match unsafe { CompareCtx::new(a, b) } {
+        Ok(ctx) => ctx,
+        Err(ord) => return ord,
+    };
 
     loop {
-        if pa >= enda || pb >= endb {
-            let rem_a = (enda as usize).wrapping_sub(pa as usize);
-            let rem_b = (endb as usize).wrapping_sub(pb as usize);
-            return rem_a.cmp(&rem_b);
+        if let Some(ord) = unsafe { ctx.check_end() } {
+            return ord;
         }
 
-        let ca;
-        let cb;
-        unsafe {
-            ca = *pa;
-            cb = *pb;
-        }
+        let (ca, cb) = unsafe { ctx.current() };
 
         if byte_utils::is_digit(ca) && byte_utils::is_digit(cb) {
-            let la0 =
-                ca == b'0' && (pa == a.as_ptr() || unsafe { !byte_utils::is_digit(*pa.sub(1)) });
-            let lb0 =
-                cb == b'0' && (pb == b.as_ptr() || unsafe { !byte_utils::is_digit(*pb.sub(1)) });
-            let (result, new_pa, new_pb) =
-                unsafe { byte_utils::handle_digit_case(a, b, pa, pb, enda, endb, la0 | lb0) };
-            pa = new_pa;
-            pb = new_pb;
-            if let Some(ord) = result {
+            if let Some(ord) = unsafe { ctx.handle_both_digits(a, b) } {
                 return ord;
             }
             continue;
@@ -78,30 +43,20 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
         // At most one side is a digit (or neither).
         if ca != cb {
             if byte_utils::is_ascii_ws(ca) || byte_utils::is_ascii_ws(cb) {
-                unsafe { byte_utils::skip_whitespace(&mut pa, &mut pb, enda, endb) };
+                unsafe { ctx.skip_ws() };
                 continue;
             }
-            if byte_utils::is_digit(ca) != byte_utils::is_digit(cb)
-                && pa > a.as_ptr()
-                && unsafe { byte_utils::is_digit(*pa.sub(1)) }
-            {
-                return if byte_utils::is_digit(ca) {
-                    Greater
-                } else {
-                    Less
-                };
+            if let Some(ord) = unsafe { ctx.check_digit_boundary(a, ca, cb) } {
+                return ord;
             }
             return if ca < cb { Less } else { Greater };
         }
 
-        if unsafe { byte_utils::is_ascii_ws(*pa) } {
-            unsafe { byte_utils::skip_whitespace(&mut pa, &mut pb, enda, endb) };
+        if byte_utils::is_ascii_ws(ca) {
+            unsafe { ctx.skip_ws() };
             continue;
         }
 
-        unsafe {
-            pa = pa.add(1);
-            pb = pb.add(1);
-        }
+        unsafe { ctx.advance() };
     }
 }
