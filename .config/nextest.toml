@@ -3,3 +3,5 @@
 [profile.default]
 fail-fast = false
 retries = 2
+junit.path = "junit.xml"
+junit.store-success-output = true
