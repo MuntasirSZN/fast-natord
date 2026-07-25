@@ -3,6 +3,8 @@
 use super::basic::{finish_scalar, load_u64, load_u128};
 use super::skip_while_digit::{digit_run_ends_short, simd_skip_while_digit};
 use super::*;
+use crate::byte_utils::compare_word_at_a_time::compare_word_at_a_time;
+use crate::byte_utils::skip_while_digit::simd_skip_while_digit_both;
 
 // On wasm32 `#[test]` delegates to wasm_bindgen_test.
 #[cfg(target_arch = "wasm32")]

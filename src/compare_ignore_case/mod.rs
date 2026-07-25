@@ -33,12 +33,10 @@ pub fn compare_ignore_case_impl(a: &[u8], b: &[u8]) -> Ordering {
     // Harden digit-run boundary.
     if adv > 0 && adv < common_len {
         unsafe {
-            let ca_after = *a.as_ptr().add(adv);
-            let cb_after = *b.as_ptr().add(adv);
-            if byte_utils::is_digit(ca_after)
-                && byte_utils::is_digit(cb_after)
-                && byte_utils::is_digit(*a.as_ptr().add(adv - 1))
-                && byte_utils::is_digit(*b.as_ptr().add(adv - 1))
+            if byte_utils::is_digit(*a.as_ptr().add(adv))
+                & byte_utils::is_digit(*b.as_ptr().add(adv))
+                & byte_utils::is_digit(*a.as_ptr().add(adv - 1))
+                & byte_utils::is_digit(*b.as_ptr().add(adv - 1))
             {
                 pa = a.as_ptr().add(adv - 1);
                 pb = b.as_ptr().add(adv - 1);
@@ -60,119 +58,18 @@ pub fn compare_ignore_case_impl(a: &[u8], b: &[u8]) -> Ordering {
             cb = *pb;
         }
 
-        // Both sides are digits: compare the two runs.
         if byte_utils::is_digit(ca) && byte_utils::is_digit(cb) {
             let la0 =
                 ca == b'0' && (pa == a.as_ptr() || unsafe { !byte_utils::is_digit(*pa.sub(1)) });
             let lb0 =
                 cb == b'0' && (pb == b.as_ptr() || unsafe { !byte_utils::is_digit(*pb.sub(1)) });
-
-            if la0 || lb0 {
-                // Left-aligned (leading zero): shorter run can win.
-                unsafe {
-                    if (enda as usize).wrapping_sub(pa as usize) < 16
-                        && (endb as usize).wrapping_sub(pb as usize) < 16
-                    {
-                        let mut pa_run = pa;
-                        let mut pb_run = pb;
-                        loop {
-                            let da = pa_run < enda && byte_utils::is_digit(*pa_run);
-                            let db = pb_run < endb && byte_utils::is_digit(*pb_run);
-                            if da && db {
-                                let va = *pa_run;
-                                let vb = *pb_run;
-                                if va != vb {
-                                    return if va < vb { Less } else { Greater };
-                                }
-                                pa_run = pa_run.add(1);
-                                pb_run = pb_run.add(1);
-                            } else if da {
-                                return Greater;
-                            } else if db {
-                                return Less;
-                            } else {
-                                break;
-                            }
-                        }
-                        pa = pa_run;
-                        pb = pb_run;
-                        continue;
-                    }
-
-                    let start_a = (pa as usize) - (a.as_ptr() as usize);
-                    let start_b = (pb as usize) - (b.as_ptr() as usize);
-                    let (end_a, end_b) =
-                        byte_utils::simd_skip_while_digit_both(a, b, start_a, start_b);
-                    let ka = end_a - start_a;
-                    let kb = end_b - start_b;
-                    let min_len = if ka < kb { ka } else { kb };
-
-                    if let Some(ord) = byte_utils::compare_word_at_a_time(pa, pb, min_len) {
-                        return ord;
-                    }
-
-                    if ka != kb {
-                        return ka.cmp(&kb);
-                    }
-                    pa = a.as_ptr().add(end_a);
-                    pb = b.as_ptr().add(end_b);
-                }
-                continue;
+            let (result, new_pa, new_pb) =
+                unsafe { byte_utils::handle_digit_case(a, b, pa, pb, enda, endb, la0 | lb0) };
+            pa = new_pa;
+            pb = new_pb;
+            if let Some(ord) = result {
+                return ord;
             }
-
-            // Right-aligned: longer significant run wins.
-            let ka;
-            let kb;
-            let pa_run;
-            let pb_run;
-            unsafe {
-                if (enda as usize).wrapping_sub(pa as usize) < 16
-                    && (endb as usize).wrapping_sub(pb as usize) < 16
-                {
-                    let mut pa_scan = pa;
-                    let mut pb_scan = pb;
-                    loop {
-                        let da = pa_scan < enda && byte_utils::is_digit(*pa_scan);
-                        let db = pb_scan < endb && byte_utils::is_digit(*pb_scan);
-                        if da && db {
-                            pa_scan = pa_scan.add(1);
-                            pb_scan = pb_scan.add(1);
-                        } else if da {
-                            return Greater;
-                        } else if db {
-                            return Less;
-                        } else {
-                            break;
-                        }
-                    }
-                    ka = pa_scan as usize - pa as usize;
-                    kb = pb_scan as usize - pb as usize;
-                    pa_run = pa_scan;
-                    pb_run = pb_scan;
-                } else {
-                    let start_a = (pa as usize) - (a.as_ptr() as usize);
-                    let start_b = (pb as usize) - (b.as_ptr() as usize);
-                    let (end_a, end_b) =
-                        byte_utils::simd_skip_while_digit_both(a, b, start_a, start_b);
-                    ka = end_a - start_a;
-                    kb = end_b - start_b;
-                    pa_run = a.as_ptr().add(end_a);
-                    pb_run = b.as_ptr().add(end_b);
-                }
-            }
-
-            if ka != kb {
-                return ka.cmp(&kb);
-            }
-
-            unsafe {
-                if let Some(ord) = byte_utils::compare_word_at_a_time(pa, pb, ka) {
-                    return ord;
-                }
-            }
-
-            pa = pa_run;
-            pb = pb_run;
             continue;
         }
 

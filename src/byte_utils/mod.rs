@@ -6,6 +6,7 @@
 
 mod basic;
 mod compare_word_at_a_time;
+mod digit_run;
 mod dispatch;
 mod is_ascii;
 mod skip_equal;
@@ -18,7 +19,6 @@ mod tests;
 mod kani;
 
 pub use basic::{is_ascii_ws, is_digit, skip_whitespace};
-pub use compare_word_at_a_time::compare_word_at_a_time;
+pub(crate) use digit_run::handle_digit_case;
 pub use is_ascii::simd_is_ascii;
 pub use skip_equal::simd_skip_equal;
-pub use skip_while_digit::simd_skip_while_digit_both;
