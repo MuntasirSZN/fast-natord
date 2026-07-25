@@ -174,6 +174,57 @@ fn test_ic_left_aligned_long_run_equal_digits() {
 }
 
 #[test]
+fn test_ic_left_aligned_long_path_none() {
+    // Left-aligned long path: outer loop advances pa/pb through case-fold
+    // then whitespace to different offsets, both land on '0' digits.
+    // All overlapping digits equal, runs same length → compare_word_at_a_time
+    // returns None → pa/pb advance past the digit run.
+    assert_eq!(
+        compare_ignore_case("x  000000000000000000a", "X 000000000000000000b"),
+        Ordering::Less
+    );
+}
+
+#[test]
+fn test_ic_left_aligned_long_path_ka_ne_kb() {
+    // Left-aligned long path, different-length runs: compare_word_at_a_time
+    // returns None for overlapping digits, then ka != kb → ka.cmp(&kb).
+    assert_eq!(
+        compare_ignore_case("x  00000000000000000a", "X 0000000000000000000a"),
+        Ordering::Less
+    );
+}
+
+#[test]
+fn test_ic_left_aligned_short_path_break() {
+    // Left-aligned short path, both runs end at the same position.
+    assert_eq!(compare_ignore_case("x  00a", "X 00a"), Ordering::Equal);
+}
+
+#[test]
+fn test_ic_left_aligned_short_path_da() {
+    // Left-aligned short path: outer loop advances pa/pb through
+    // case-fold then whitespace to different offsets, both land on digits.
+    // After equal overlapping digits, left has more digits → else if da → Greater.
+    assert_eq!(compare_ignore_case("a00x", "A0x"), Ordering::Greater);
+}
+
+#[test]
+fn test_ic_left_aligned_short_path_db() {
+    assert_eq!(compare_ignore_case("A0x", "a00x"), Ordering::Less);
+}
+
+#[test]
+fn test_ic_right_aligned_equal_run_then_continue() {
+    // Right-aligned short path: both digit runs have equal length and all
+    // overlapping digits equal → compare_word_at_a_time returns None →
+    // continue past the equal digit run.
+    // The diff is before the digit run (case-fold advances through equal
+    // non-digit content), placing pa/pb at the run start.
+    assert_eq!(compare_ignore_case("a 12x", "A 12x"), Ordering::Equal);
+}
+
+#[test]
 fn test_ic_right_aligned_different_lengths() {
     assert_eq!(
         compare_ignore_case(" 0X12345A", " 0X123B"),

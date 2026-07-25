@@ -91,6 +91,16 @@ fn test_ascii_only_keeps_non_ascii() {
 }
 
 #[test]
+fn test_ascii_only_non_ascii_unchanged() {
+    // fold_ascii slow path with all-lowercase non-ASCII:
+    // no char changes, changed=false → returns Cow::Borrowed (else { s } branch).
+    let norm = Normalizer::new().case_ascii_only();
+    let n = norm.normalize("café");
+    assert_eq!(n.as_ref(), "café");
+    assert!(matches!(n, std::borrow::Cow::Borrowed(_)));
+}
+
+#[test]
 fn test_compare_empty_strings() {
     let norm = Normalizer::new().nfc().case_fold();
     assert_eq!(norm.compare("", ""), Ordering::Equal);
@@ -193,4 +203,39 @@ fn test_normalizer_case_sensitive() {
         Ordering::Equal,
         "case_sensitive should preserve NFC setting"
     );
+}
+
+#[test]
+fn test_case_sensitive_explicit() {
+    // cover the case_sensitive() builder method (unconditionally available).
+    // Use nfc() so we don't short-circuit before apply_case.
+    let norm = Normalizer::default().nfc().case_fold().case_sensitive();
+    let n = norm.normalize("ABC");
+    assert_eq!(n.as_ref(), "ABC");
+}
+
+#[test]
+fn test_default_normalizer() {
+    // Cover Default::default() implementation.
+    let norm: Normalizer = Default::default();
+    assert_eq!(norm.normalize("abc").as_ref(), "abc");
+}
+
+#[test]
+fn test_nfd_method() {
+    // nfd() builder method unconditionally available.
+    let norm = Normalizer::default().nfd();
+    assert_eq!(norm.normalize("abc").as_ref(), "abc");
+}
+
+#[test]
+fn test_nfkc_method() {
+    let norm = Normalizer::default().nfkc();
+    assert_eq!(norm.normalize("abc").as_ref(), "abc");
+}
+
+#[test]
+fn test_nfkd_method() {
+    let norm = Normalizer::default().nfkd();
+    assert_eq!(norm.normalize("abc").as_ref(), "abc");
 }

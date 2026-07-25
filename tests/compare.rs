@@ -291,6 +291,50 @@ fn test_compare_left_aligned_b_longer_run() {
     assert_eq!(compare(" 0X00A", " 0X001B"), Ordering::Less);
 }
 
+#[test]
+fn test_compare_left_aligned_long_path_none() {
+    // Left-aligned long path: outer loop advances pa/pb through whitespace
+    // to different offsets, both land on digits. All overlapping digits
+    // equal, runs have same length → compare_word_at_a_time returns None.
+    // Falls through to pa/pb advance past the digit run.
+    // Remaining >= 16 on at least one side (long path).
+    assert_eq!(
+        compare("  00000000000000000a", " 00000000000000000b"),
+        Ordering::Less
+    );
+}
+
+#[test]
+fn test_compare_left_aligned_long_path_ka_ne_kb() {
+    // Left-aligned long path, different-length runs: compare_word_at_a_time
+    // returns None for overlapping digits, then ka != kb → ka.cmp(&kb).
+    assert_eq!(
+        compare("  00000000000000000a", " 0000000000000000000a"),
+        Ordering::Less
+    );
+}
+
+#[test]
+fn test_compare_left_aligned_short_path_break() {
+    // Left-aligned short path, both runs end at the same position.
+    // da=false && db=false → else { break }.
+    assert_eq!(compare("  00a", " 00a"), Ordering::Equal);
+}
+
+#[test]
+fn test_compare_left_aligned_short_path_da() {
+    // Left-aligned short path: outer loop advances pa/pb through
+    // whitespace to different offsets, both land on digits. After equal
+    // overlapping digits, left side has more digits → else if da → Greater.
+    assert_eq!(compare("  00x", " 0x"), Ordering::Greater);
+}
+
+#[test]
+fn test_compare_left_aligned_short_path_db() {
+    // Mirror of da test: right side has more digits.
+    assert_eq!(compare(" 0x", "  00x"), Ordering::Less);
+}
+
 // ── Right-aligned: different digit-run lengths ───────────────────────
 
 #[test]
