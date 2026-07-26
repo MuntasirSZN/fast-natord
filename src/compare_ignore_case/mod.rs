@@ -26,13 +26,15 @@ pub fn compare_ignore_case_impl(a: &[u8], b: &[u8]) -> Ordering {
     };
 
     loop {
-        if let Some(ord) = unsafe { ctx.check_end() } {
-            return ord;
-        }
+        let (ca, cb) = match unsafe { ctx.try_current() } {
+            Ok(pair) => pair,
+            Err(ord) => return ord,
+        };
 
-        let (ca, cb) = unsafe { ctx.current() };
+        let da = byte_utils::is_digit(ca);
+        let db = byte_utils::is_digit(cb);
 
-        if byte_utils::is_digit(ca) && byte_utils::is_digit(cb) {
+        if da & db {
             if let Some(ord) = unsafe { ctx.handle_both_digits(a, b) } {
                 return ord;
             }
@@ -49,8 +51,12 @@ pub fn compare_ignore_case_impl(a: &[u8], b: &[u8]) -> Ordering {
         } else if byte_utils::is_ascii_ws(ca) || byte_utils::is_ascii_ws(cb) {
             unsafe { ctx.skip_ws() };
             continue;
-        } else if let Some(ord) = unsafe { ctx.check_digit_boundary(a, ca, cb) } {
-            return ord;
+        } else if da | db {
+            // One side is a digit, the other isn't.
+            if let Some(ord) = unsafe { ctx.check_digit_boundary(a, ca, cb) } {
+                return ord;
+            }
+            return if ca < cb { Less } else { Greater };
         } else if ca < 128 && cb < 128 {
             let lca = ca.to_ascii_lowercase();
             let lcb = cb.to_ascii_lowercase();

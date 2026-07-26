@@ -27,13 +27,15 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
     };
 
     loop {
-        if let Some(ord) = unsafe { ctx.check_end() } {
-            return ord;
-        }
+        let (ca, cb) = match unsafe { ctx.try_current() } {
+            Ok(pair) => pair,
+            Err(ord) => return ord,
+        };
 
-        let (ca, cb) = unsafe { ctx.current() };
+        let da = byte_utils::is_digit(ca);
+        let db = byte_utils::is_digit(cb);
 
-        if byte_utils::is_digit(ca) && byte_utils::is_digit(cb) {
+        if da & db {
             if let Some(ord) = unsafe { ctx.handle_both_digits(a, b) } {
                 return ord;
             }
@@ -46,7 +48,9 @@ pub fn compare_impl(a: &[u8], b: &[u8]) -> Ordering {
                 unsafe { ctx.skip_ws() };
                 continue;
             }
-            if let Some(ord) = unsafe { ctx.check_digit_boundary(a, ca, cb) } {
+            if da | db
+                && let Some(ord) = unsafe { ctx.check_digit_boundary(a, ca, cb) }
+            {
                 return ord;
             }
             return if ca < cb { Less } else { Greater };

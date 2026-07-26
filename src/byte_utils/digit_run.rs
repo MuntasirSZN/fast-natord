@@ -26,6 +26,7 @@ use super::skip_while_digit::simd_skip_while_digit_both;
 ///
 /// `pa`, `pb` must point into `a`, `b`; `enda`, `endb` must be the
 /// end pointers.
+#[inline(always)]
 pub(crate) unsafe fn handle_digit_case(
     a: &[u8],
     b: &[u8],
@@ -46,6 +47,7 @@ pub(crate) unsafe fn handle_digit_case(
     }
 }
 
+#[inline(always)]
 unsafe fn handle_left_aligned(
     a: &[u8],
     b: &[u8],
@@ -102,6 +104,7 @@ unsafe fn handle_left_aligned(
     })
 }
 
+#[inline(always)]
 fn handle_right_aligned(
     a: &[u8],
     b: &[u8],

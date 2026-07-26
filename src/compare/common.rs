@@ -71,20 +71,20 @@ impl CompareCtx {
     ///
     /// Returns `Some(Ordering)` when one string is exhausted — ordering is
     /// determined by remaining length.
+    /// Combined bounds-check and load.
+    ///
+    /// Returns `Ok((ca, cb))` if both pointers are in-bounds, or
+    /// `Err(Ordering)` derived from remaining length when one is
+    /// exhausted.  Replaces the previous `check_end` + `current` pair
+    /// for fewer total instructions in the hot loop.
     #[inline(always)]
-    pub unsafe fn check_end(&self) -> Option<Ordering> {
+    pub unsafe fn try_current(&self) -> Result<(u8, u8), Ordering> {
         if self.pa >= self.enda || self.pb >= self.endb {
             let rem_a = (self.enda as usize).wrapping_sub(self.pa as usize);
             let rem_b = (self.endb as usize).wrapping_sub(self.pb as usize);
-            return Some(rem_a.cmp(&rem_b));
+            return Err(rem_a.cmp(&rem_b));
         }
-        None
-    }
-
-    /// Read the current byte from each pointer.
-    #[inline(always)]
-    pub unsafe fn current(&self) -> (u8, u8) {
-        unsafe { (*self.pa, *self.pb) }
+        unsafe { Ok((*self.pa, *self.pb)) }
     }
 
     /// Handle the case where both current bytes are digits.
