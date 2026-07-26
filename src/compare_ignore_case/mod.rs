@@ -20,6 +20,24 @@ mod kani;
 /// [`CompareCtx`] — shared with the case-sensitive backend.
 #[inline(always)]
 pub fn compare_ignore_case_impl(a: &[u8], b: &[u8]) -> Ordering {
+    compare_impl_inner(a, b, true)
+}
+
+/// Like [`compare_ignore_case_impl`] but only folds ASCII case — non-ASCII
+/// characters are compared without case folding.  Zero-copy.
+#[inline(always)]
+pub(crate) fn compare_ascii_only_impl(a: &[u8], b: &[u8]) -> Ordering {
+    compare_impl_inner(a, b, false)
+}
+
+/// Inner comparison loop shared by the case-insensitive and ASCII-only
+/// backends.
+///
+/// When `full_case_fold` is `true`, non-ASCII characters are decoded and
+/// case-folded via [`char::to_lowercase`]; when `false` they are compared
+/// directly.
+#[inline(always)]
+fn compare_impl_inner(a: &[u8], b: &[u8], full_case_fold: bool) -> Ordering {
     let mut ctx = match unsafe { CompareCtx::new(a, b) } {
         Ok(ctx) => ctx,
         Err(ord) => return ord,
@@ -65,7 +83,7 @@ pub fn compare_ignore_case_impl(a: &[u8], b: &[u8]) -> Ordering {
             }
             unsafe { ctx.advance() };
         } else if ca >= 128 && cb >= 128 {
-            // Both non-ASCII — decode and case-fold.
+            // Both non-ASCII.
             unsafe {
                 let rest_a =
                     core::slice::from_raw_parts(ctx.pa, ctx.enda as usize - ctx.pa as usize);
@@ -74,9 +92,13 @@ pub fn compare_ignore_case_impl(a: &[u8], b: &[u8]) -> Ordering {
                 let (ch_a, adv_a) = unicode::decode_char(rest_a);
                 let (ch_b, adv_b) = unicode::decode_char(rest_b);
                 if ch_a != ch_b {
-                    let cmp = ch_a.to_lowercase().cmp(ch_b.to_lowercase());
-                    if cmp != Equal {
-                        return cmp;
+                    if full_case_fold {
+                        let cmp = ch_a.to_lowercase().cmp(ch_b.to_lowercase());
+                        if cmp != Equal {
+                            return cmp;
+                        }
+                    } else {
+                        return if ch_a < ch_b { Less } else { Greater };
                     }
                 }
                 ctx.pa = ctx.pa.add(adv_a);

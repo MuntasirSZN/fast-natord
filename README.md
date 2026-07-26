@@ -49,8 +49,10 @@ comparison loop:
 1. [`Normalizer::normalize`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/struct.Normalizer.html#method.normalize) applies the configured Unicode normalization
    and/or case folding, returning a [`alloc::borrow::Cow<str>`](https://doc.rust-lang.org/stable/alloc/borrow/enum.Cow.html) (borrowed when no
    transformation is needed).
-2. [`Normalizer::compare`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/struct.Normalizer.html#method.compare) normalizes both inputs, then delegates to the
-   same SIMD-accelerated case-sensitive comparator used by [`compare`][compare].
+2. [`Normalizer::compare`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/struct.Normalizer.html#method.compare) compares directly via SIMD-accelerated
+   on-the-fly case folding without allocating intermediate strings.
+   Full Unicode normalization (behind the `normalize` feature) still
+   pre-normalizes each string before comparison.
 
 On all-ASCII inputs the normalizer short-circuits via SIMD with zero
 allocation regardless of the configured normalization form.
@@ -68,9 +70,12 @@ Without `normalize`:
 
 ## [`no_std`][no_std]
 
-`fast-natord` is [`#![no_std]`][no_std] by default. The core API uses
-[`core::cmp::Ordering`](https://doc.rust-lang.org/stable/core/cmp/enum.Ordering.html) and `&str` / `&[u8]` arguments.
-The `normalize` feature additionally requires [`alloc`](https://doc.rust-lang.org/stable/alloc/).
+`fast-natord` is [`#![no_std]`][no_std] by default — all comparison
+functions work on borrowed data with zero allocation.
+The `normalize` feature additionally requires [`alloc`](https://doc.rust-lang.org/stable/alloc/) for the
+[`Normalizer::normalize`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/struct.Normalizer.html#method.normalize) method.
+[`Normalizer::compare`](https://docs.rs/fast-natord/latest/fast_natord/normalizer/struct.Normalizer.html#method.compare) is allocation-free unless full Unicode
+normalization is active.
 
 ## SIMD Optimized
 

@@ -156,14 +156,43 @@ impl Normalizer {
 
     /// Compare two strings using this normalizer's configuration.
     ///
-    /// Equivalent to normalizing both then using the optimised comparator.
+    /// When no Unicode normalization is needed (or the `normalize` feature
+    /// is disabled), this compares the strings directly without allocating.
+    /// Full Unicode normalization (behind the `normalize` feature) still
+    /// pre-normalizes each string before comparison.
     pub fn compare(&self, a: &str, b: &str) -> Ordering {
+        if !self.normalization_is_active() {
+            return match self.case_mode {
+                CaseMode::Sensitive => crate::compare(a, b),
+                CaseMode::AsciiOnly => {
+                    crate::compare_ignore_case::compare_ascii_only_impl(a.as_bytes(), b.as_bytes())
+                }
+                CaseMode::Fold => crate::compare_ignore_case(a, b),
+            };
+        }
+
+        // Unicode normalization is active — pre-normalize then compare.
         let na = self.normalize(a);
         let nb = self.normalize(b);
         crate::compare(na.as_ref(), nb.as_ref())
     }
 
     // ── Internal helpers ────────────────────────────────────────────
+
+    /// Returns `true` if the configured Unicode normalization form will
+    /// actually transform text.  Without the `normalize` feature all
+    /// normalization forms are no-ops.
+    fn normalization_is_active(&self) -> bool {
+        #[cfg(feature = "normalize")]
+        {
+            self.normalization != Normalization::None
+        }
+        #[cfg(not(feature = "normalize"))]
+        {
+            // All normalization forms silently behave as None.
+            false
+        }
+    }
 
     fn apply_normalization<'a>(&self, s: &'a str) -> Cow<'a, str> {
         match self.normalization {

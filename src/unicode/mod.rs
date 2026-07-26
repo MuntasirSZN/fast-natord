@@ -30,10 +30,10 @@ pub fn decode_char(s: &[u8]) -> (char, usize) {
         return (first as char, 1);
     }
     let len = utf8_char_len(first);
+    // SAFETY: callers guarantee `len <= s.len()` and the bytes form
+    // valid UTF-8 (derived from a `&str` leading byte).
     let ch = unsafe {
-        let mut buf = [0u8; 4];
-        buf[..len].copy_from_slice(&s[..len]);
-        core::str::from_utf8_unchecked(&buf[..len])
+        core::str::from_utf8_unchecked(&s[..len])
             .chars()
             .next()
             .unwrap_or(char::REPLACEMENT_CHARACTER)
