@@ -1,3 +1,38 @@
+<a name="v0.2.1"></a>
+
+## [v0.2.1](https://github.com/MuntasirSZN/getquotes/compare/v0.2.0...v0.2.1) (2026-07-21)
+
+### ✨ Features
+
+- much more faster
+- who doesnt love more speed
+
+
+### 🐞 Bug Fixes
+
+- add ignore for timeout too
+- fixes
+- kani and clippy
+- last commit issues
+
+
+### ⌛ Performance Improvements
+
+- one function dispatch
+- more?
+- fix codspeed regresses
+
+
+<a name="v0.2.0"></a>
+
+## [v0.2.0](https://github.com/MuntasirSZN/getquotes/compare/v0.1.0...v0.2.0) (2026-07-16)
+
+### 🐞 Bug Fixes
+
+- issues
+- use changelogithub
+
+
 <a name="v0.1.0"></a>
 
 ## v0.1.0 (2026-07-14)
