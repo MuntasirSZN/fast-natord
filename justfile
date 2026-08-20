@@ -174,4 +174,3 @@ watch:
 # Create a release build and run the binary
 release:
     cargo build --release
-    @echo "{{ BLUE + BOLD }}Release binary:{{ NORMAL }} {{ UNDERLINE + CYAN }}target/release/changelogen{{ NORMAL }}"

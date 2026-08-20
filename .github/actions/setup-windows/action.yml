@@ -5,8 +5,7 @@ runs:
   using: composite
   steps:
     - name: Enable Git long paths
-      shell: bash
-      run: git config --system core.longpaths true
+      run: git config --global core.longpaths true
 
     - name: Enable Windows long paths
       shell: powershell
@@ -17,14 +16,3 @@ runs:
           -Value 1 `
           -PropertyType DWORD `
           -Force
-
-    - name: Configure cargo to use CLI git fetch
-      shell: bash
-      run: |
-        mkdir -p "$HOME/.cargo"
-        cfg="$HOME/.cargo/config.toml"
-        if [ -f "$cfg" ] && grep -q 'git-fetch-with-cli' "$cfg"; then
-          : # already present
-        else
-          printf '\n[net]\ngit-fetch-with-cli = true\n' >> "$cfg"
-        fi

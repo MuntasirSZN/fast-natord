@@ -36,8 +36,6 @@ simd-normalizer = { version = "0.1", default-features = false, features = ["allo
 [target.'cfg(any(target_arch = "aarch64", target_arch = "x86_64"))'.dependencies]
 cpufeatures = "0.3.0"
 
-# IDE in windows won't work, CI fails with path too long, workaround
-# until a solution is found.
 [target."cfg(kani_ra)".dev-dependencies]
 kani = { git = "https://github.com/model-checking/kani" }
 
