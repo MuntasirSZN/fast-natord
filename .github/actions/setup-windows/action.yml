@@ -1,5 +1,5 @@
 name: Setup Windows
-description: Enable Git long paths, Windows long paths, and cargo CLI git fetch
+description: Enable Git long paths
 
 runs:
   using: composite
@@ -7,13 +7,3 @@ runs:
     - name: Enable Git long paths
       shell: powershell
       run: git config --global core.longpaths true
-
-    - name: Enable Windows long paths
-      shell: powershell
-      run: |
-        New-ItemProperty `
-          -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" `
-          -Name LongPathsEnabled `
-          -Value 1 `
-          -PropertyType DWORD `
-          -Force
