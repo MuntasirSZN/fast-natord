@@ -5,6 +5,7 @@ runs:
   using: composite
   steps:
     - name: Enable Git long paths
+      shell: powershell
       run: git config --global core.longpaths true
 
     - name: Enable Windows long paths
